@@ -1,4 +1,5 @@
-﻿export { HeroSection } from "./HeroSection";
+﻿export { HeaderSection } from "./HeaderSection";
+export { HeroSection } from "./HeroSection";
 export { FeaturesSection } from "./FeaturesSection";
 export { FAQSection } from "./FAQSection";
 export { VisualSection } from "./VisualSection";

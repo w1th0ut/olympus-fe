@@ -2,6 +2,7 @@
 
 import { motion, type MotionValue } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/components/landing/animations";
+import { HeaderSection } from "@/components/landing/HeaderSection";
 
 interface HeroSectionProps {
   heroImageY: MotionValue<number>;
@@ -32,99 +33,7 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
 
       {/* Main Content Container */}
       <div className="relative z-10 flex-1 flex flex-col">
-        {/* Header/Navbar */}
-        <motion.header
-          className="w-full px-6 sm:px-8 lg:px-11 py-2 lg:py-3 flex-shrink-0"
-          initial={{ opacity: 0, y: -30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.2 }}
-        >
-          <div className="flex items-start justify-between">
-            {/* Logo */}
-            <motion.div
-              className="flex items-center gap-2 pt-2"
-              whileHover={{ scale: 1.02 }}
-              transition={{ duration: 0.3 }}
-            >
-              <img
-                src="/images/Logo-figma.webp"
-                alt="Apollos Finance Logo"
-                className="w-[50px] h-[62px] sm:w-[60px] sm:h-[75px] lg:w-[78px] lg:h-[97px] object-contain"
-              />
-              <div className="flex flex-col -space-y-2 lg:-space-y-4">
-                <span className="font-playfair font-bold text-neutral-950 text-3xl sm:text-4xl lg:text-[64px] leading-none tracking-tight">
-                  APOLLOS
-                </span>
-                <span className="font-playfair font-bold text-neutral-950 text-lg sm:text-xl lg:text-[32px] italic leading-tight pl-0.5">
-                  Finance
-                </span>
-              </div>
-            </motion.div>
-
-            {/* Navigation */}
-            <motion.nav
-              className="hidden lg:flex items-center gap-4 xl:gap-6 pt-6"
-              variants={staggerContainer}
-              initial="hidden"
-              animate="visible"
-            >
-              {["Security", "Docs", "Transparency", "Governance"].map((item) => (
-                <motion.a
-                  key={item}
-                  href={`#${item.toLowerCase()}`}
-                  className="font-manrope font-bold text-neutral-950 text-lg xl:text-xl relative overflow-hidden"
-                  variants={staggerItem}
-                  whileHover={{ scale: 1.05 }}
-                >
-                  <span className="relative z-10">{item}</span>
-                  <motion.div
-                    className="absolute bottom-0 left-0 w-full h-[2px] bg-neutral-950"
-                    initial={{ scaleX: 0 }}
-                    whileHover={{ scaleX: 1 }}
-                    transition={{ duration: 0.3 }}
-                  />
-                </motion.a>
-              ))}
-              <motion.button
-                className="flex items-center gap-3 bg-white rounded-[60px] px-6 py-3 shadow-[0px_10px_10px_0px_rgba(0,0,0,0.50)] border border-neutral-950"
-                variants={staggerItem}
-                whileHover={{
-                  scale: 1.05,
-                  boxShadow: "0px 15px 20px 0px rgba(0,0,0,0.40)",
-                }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <span className="font-syne font-bold text-neutral-950 text-lg xl:text-xl">
-                  Menu
-                </span>
-                <motion.div
-                  className="relative w-[13px] h-[13px]"
-                  whileHover={{ rotate: 90 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  <div className="absolute top-1/2 left-0 w-[13px] h-[3px] bg-neutral-950 -translate-y-1/2"></div>
-                  <div className="absolute top-0 left-1/2 w-[3px] h-[13px] bg-neutral-950 -translate-x-1/2"></div>
-                </motion.div>
-              </motion.button>
-            </motion.nav>
-
-            {/* Mobile Menu Button */}
-            <motion.button
-              className="lg:hidden flex items-center gap-2 bg-white rounded-[60px] px-4 py-2 shadow-[0px_10px_10px_0px_rgba(0,0,0,0.50)] border border-neutral-950 mt-6"
-              initial={{ opacity: 0, x: 30 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.4 }}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <span className="font-syne font-bold text-neutral-950 text-base">Menu</span>
-              <div className="relative w-[13px] h-[13px]">
-                <div className="absolute top-1/2 left-0 w-[13px] h-[3px] bg-neutral-950 -translate-y-1/2"></div>
-                <div className="absolute top-0 left-1/2 w-[3px] h-[13px] bg-neutral-950 -translate-x-1/2"></div>
-              </div>
-            </motion.button>
-          </div>
-        </motion.header>
+        <HeaderSection />
 
         {/* Main Content */}
         <main className="px-6 sm:px-8 lg:px-11 pt-6 sm:pt-8 lg:pt-10 flex-1">
@@ -168,7 +77,7 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.6, delay: 0.6 }}
               >
-                Boosted Liquidity
+                The First DeFi
               </motion.span>
               <br />
               <motion.span
@@ -176,7 +85,7 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.6, delay: 0.8 }}
               >
-                Oracle-Priced Pools
+                Yield Farming
               </motion.span>
             </motion.h1>
 
@@ -187,8 +96,7 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 1 }}
             >
-              Engineered pools that reduce impermanent loss and prevent LVR with oracle-based
-              pricing as the source of truth.
+              Engineered pools that reduce impermanent loss and prevent LVR
             </motion.p>
 
             {/* CTA Button */}
@@ -212,7 +120,7 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
             >
               <motion.div className="flex flex-col" whileHover={{ scale: 1.05 }}>
                 <span className="font-manrope font-light text-neutral-950/60 text-lg sm:text-xl">
-                  TVL
+                  Total TVL
                 </span>
                 <motion.span
                   className="font-manrope font-medium text-neutral-950 text-lg sm:text-xl"
@@ -231,7 +139,7 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
               />
               <motion.div className="flex flex-col" whileHover={{ scale: 1.05 }}>
                 <span className="font-manrope font-light text-neutral-950/60 text-lg sm:text-xl">
-                  CURRENT APY
+                  Highest APY
                 </span>
                 <motion.span
                   className="font-manrope font-medium text-neutral-950 text-lg sm:text-xl"
@@ -249,6 +157,8 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
     </section>
   );
 }
+
+
 
 
 
