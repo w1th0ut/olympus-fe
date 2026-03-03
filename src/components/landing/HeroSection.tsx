@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { motion, type MotionValue } from "framer-motion";
+import { useRouter } from "next/navigation";
 import { staggerContainer, staggerItem } from "@/components/landing/animations";
 import { HeaderSection } from "@/components/landing/HeaderSection";
 
@@ -9,6 +10,7 @@ interface HeroSectionProps {
 }
 
 export function HeroSection({ heroImageY }: HeroSectionProps) {
+  const router = useRouter();
   return (
     <section className="min-h-screen relative flex flex-col overflow-hidden">
       {/* Background Image - Michelangelo's David with Parallax */}
@@ -45,7 +47,11 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
               initial="hidden"
               animate="visible"
             >
-              {["Boosted Pools", "Oracle Pricing", "LVR Shield"].map((item) => (
+              {[
+                "Boosted Pools",
+                "Oracle Pricing",
+                "LVR Shield",
+              ].map((item) => (
                 <motion.button
                   key={item}
                   className="bg-white rounded-[60px] w-[140px] sm:w-[160px] lg:w-[180px] py-3 sm:py-4 shadow-[0px_12px_12px_0px_rgba(0,0,0,0.50)] border border-black flex items-center justify-center"
@@ -101,6 +107,8 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
 
             {/* CTA Button */}
             <motion.button
+              type="button"
+              onClick={() => router.push("/dashboard")}
               className="bg-[#111111] text-white border border-neutral-950 rounded px-8 sm:px-12 py-5 sm:py-6 shadow-[12px_12px_12px_0px_rgba(0,0,0,0.50)] mb-4 lg:mb-6 transition-colors duration-300 hover:bg-white hover:text-neutral-950 hover:border-neutral-950"
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -110,55 +118,9 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
                 Invest Now
               </span>
             </motion.button>
-
-            {/* Statistics */}
-            <motion.div
-              className="flex items-center gap-6 sm:gap-8"
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 1.4 }}
-            >
-              <motion.div className="flex flex-col" whileHover={{ scale: 1.05 }}>
-                <span className="font-manrope font-light text-neutral-950/60 text-lg sm:text-xl">
-                  Total TVL
-                </span>
-                <motion.span
-                  className="font-manrope font-medium text-neutral-950 text-lg sm:text-xl"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 1, delay: 1.6 }}
-                >
-                  $4,203,129
-                </motion.span>
-              </motion.div>
-              <motion.div
-                className="w-[1px] h-[54px] bg-black"
-                initial={{ scaleY: 0 }}
-                animate={{ scaleY: 1 }}
-                transition={{ duration: 0.5, delay: 1.5 }}
-              />
-              <motion.div className="flex flex-col" whileHover={{ scale: 1.05 }}>
-                <span className="font-manrope font-light text-neutral-950/60 text-lg sm:text-xl">
-                  Highest APY
-                </span>
-                <motion.span
-                  className="font-manrope font-medium text-neutral-950 text-lg sm:text-xl"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 1, delay: 1.8 }}
-                >
-                  12.5%
-                </motion.span>
-              </motion.div>
-            </motion.div>
           </div>
         </main>
       </div>
     </section>
   );
 }
-
-
-
-
-

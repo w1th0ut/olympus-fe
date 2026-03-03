@@ -3,6 +3,7 @@
 import { useScroll, useTransform } from "framer-motion";
 import {
   HeroSection,
+  ProtocolStatsSection,
   FeaturesSection,
   FAQSection,
   VisualSection,
@@ -18,6 +19,7 @@ export default function Home() {
   return (
     <div className="bg-[#e0e0e0] overflow-x-hidden">
       <HeroSection heroImageY={heroImageY} />
+      <ProtocolStatsSection />
       <FeaturesSection sectionImageY={section2ImageY} />
       <FAQSection />
       <VisualSection />
@@ -27,5 +29,3 @@ export default function Home() {
     </div>
   );
 }
-
-
