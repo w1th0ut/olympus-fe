@@ -2,6 +2,7 @@
 export { HeroSection } from "./HeroSection";
 export { ProtocolStatsSection } from "./ProtocolStatsSection";
 export { FeaturesSection } from "./FeaturesSection";
+export { HowToParticipateSection } from "./HowToParticipateSection";
 export { FAQSection } from "./FAQSection";
 export { VisualSection } from "./VisualSection";
 export { FooterSection } from "./FooterSection";

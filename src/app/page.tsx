@@ -5,6 +5,7 @@ import {
   HeroSection,
   ProtocolStatsSection,
   FeaturesSection,
+  HowToParticipateSection,
   FAQSection,
   VisualSection,
   FooterSection,
@@ -21,6 +22,7 @@ export default function Home() {
       <HeroSection heroImageY={heroImageY} />
       <ProtocolStatsSection />
       <FeaturesSection sectionImageY={section2ImageY} />
+      <HowToParticipateSection />
       <FAQSection />
       <VisualSection />
       <FooterSection />
