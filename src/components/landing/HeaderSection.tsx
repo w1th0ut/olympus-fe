@@ -3,6 +3,16 @@
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/components/landing/animations";
 
+const navLinkVariants = {
+  rest: { scale: 1 },
+  hover: { scale: 1.05 },
+};
+
+const navUnderlineVariants = {
+  rest: { scaleX: 0 },
+  hover: { scaleX: 1 },
+};
+
 export function HeaderSection() {
   return (
     <motion.header
@@ -44,16 +54,19 @@ export function HeaderSection() {
             <motion.a
               key={item}
               href={`#${item.toLowerCase()}`}
-              className="font-manrope font-bold text-neutral-950 text-lg xl:text-xl relative overflow-hidden"
+              className="font-manrope font-bold text-neutral-950 text-lg xl:text-xl relative pb-2"
               variants={staggerItem}
-              whileHover={{ scale: 1.05 }}
+              initial="rest"
+              animate="rest"
+              whileHover="hover"
             >
-              <span className="relative z-10">{item}</span>
+              <motion.span variants={navLinkVariants} className="relative z-10 inline-block">
+                {item}
+              </motion.span>
               <motion.div
-                className="absolute bottom-0 left-0 w-full h-[2px] bg-neutral-950"
-                initial={{ scaleX: 0 }}
-                whileHover={{ scaleX: 1 }}
-                transition={{ duration: 0.3 }}
+                variants={navUnderlineVariants}
+                className="absolute left-0 right-0 bottom-0 h-[3px] bg-neutral-950 rounded-full origin-left"
+                transition={{ duration: 0.25 }}
               />
             </motion.a>
           ))}
@@ -99,3 +112,4 @@ export function HeaderSection() {
     </motion.header>
   );
 }
+

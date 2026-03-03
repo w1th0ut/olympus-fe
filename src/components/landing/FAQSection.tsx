@@ -51,6 +51,14 @@ export function FAQSection() {
                 Questions
               </motion.span>
             </h2>
+            <div className="mt-6 max-w-[320px]">
+              <img
+                src="/images/Pillar.png"
+                alt=""
+                aria-hidden="true"
+                className="w-full h-auto object-contain"
+              />
+            </div>
           </motion.div>
 
           {/* FAQ Items */}

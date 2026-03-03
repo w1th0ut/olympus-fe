@@ -10,7 +10,11 @@ export function VisualSection() {
         <h2 className="font-syne font-bold text-neutral-950 text-[32px] leading-tight">
           Be smart, use Apollos Finance
         </h2>
-        <button type="button" onClick={() => router.push("/dashboard")} className="mt-4 flex items-center rounded-[60px] px-8 py-3 bg-white text-neutral-950 border border-neutral-950 shadow-[0px_10px_10px_0px_rgba(0,0,0,0.35)] transition-colors duration-300 hover:bg-neutral-950 hover:text-white hover:border-white">
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard")}
+          className="mt-4 flex items-center rounded-[60px] px-8 py-3 bg-white text-neutral-950 border border-neutral-950 shadow-[0px_10px_10px_0px_rgba(0,0,0,0.35)] transition-colors duration-300 hover:bg-neutral-950 hover:text-white hover:border-white"
+        >
           <span className="font-syne font-bold text-lg">Enter Apollos</span>
         </button>
       </div>
@@ -26,5 +30,4 @@ export function VisualSection() {
     </section>
   );
 }
-
 

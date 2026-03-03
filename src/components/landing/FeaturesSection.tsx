@@ -123,7 +123,3 @@ export function FeaturesSection({ sectionImageY }: FeaturesSectionProps) {
   );
 }
 
-
-
-
-

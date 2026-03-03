@@ -9,6 +9,7 @@ interface HeroSectionProps {
   heroImageY: MotionValue<number>;
 }
 
+
 export function HeroSection({ heroImageY }: HeroSectionProps) {
   const router = useRouter();
   return (
@@ -48,9 +49,9 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
               animate="visible"
             >
               {[
-                "Boosted Pools",
-                "Oracle Pricing",
-                "LVR Shield",
+                "Earn",
+                "Stake",
+                "Pools",
               ].map((item) => (
                 <motion.button
                   key={item}
@@ -91,7 +92,7 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.6, delay: 0.8 }}
               >
-                Yield Farming
+                Linearized Yield Protocol
               </motion.span>
             </motion.h1>
 
@@ -102,7 +103,7 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 1 }}
             >
-              Engineered pools that reduce impermanent loss and prevent LVR
+              Engineered pools that reduce impermanent loss and prevent LVR on Arbitrum Chain.
             </motion.p>
 
             {/* CTA Button */}
@@ -124,3 +125,6 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
     </section>
   );
 }
+
+
+
