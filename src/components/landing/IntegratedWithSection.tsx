@@ -3,12 +3,12 @@
 import { motion } from "framer-motion";
 
 const partners = [
-  { name: "Arbitrum", logo: "/images/Logo-figma.webp" },
-  { name: "Chainlink", logo: "/images/Logo-figma.webp" },
-  { name: "Base", logo: "/images/Logo-figma.webp" },
-  { name: "Uniswap", logo: "/images/Logo-figma.webp" },
-  { name: "Aave", logo: "/images/Logo-figma.webp" },
-  { name: "Gemini API", logo: "/images/Logo-figma.webp" },
+  { name: "Arbitrum", logo: "/icons/Logo-Arbitrum.png" },
+  { name: "Chainlink", logo: "/icons/Logo-Chainlink.png" },
+  { name: "Base", logo: "/icons/Logo-Base.png" },
+  { name: "Uniswap", logo: "/icons/Logo-Uniswap.png" },
+  { name: "Aave", logo: "/icons/Logo-Aave.png" },
+  { name: "Gemini API", logo: "/icons/Logo-Gemini.png" },
 ];
 
 export function IntegratedWithSection() {
@@ -37,7 +37,7 @@ export function IntegratedWithSection() {
               <img
                 src={partner.logo}
                 alt={partner.name}
-                className="mx-auto h-32 sm:h-36 w-auto object-contain"
+                className="mx-auto h-32 sm:h-36 w-auto max-w-[120px] sm:max-w-[160px] object-contain"
               />
               <p className="mt-4 font-manrope text-base sm:text-xl text-neutral-500">
                 {partner.name}
@@ -49,3 +49,4 @@ export function IntegratedWithSection() {
     </section>
   );
 }
+

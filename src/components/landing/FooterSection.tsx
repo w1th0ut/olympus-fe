@@ -11,7 +11,7 @@ const footerNavLinks = [
 ];
 
 const footerSocialLinks = [
-  { label: "GitHub", href: "https://github.com" },
+  { label: "GitHub", href: "https://github.com/Apollos-Finance" },
   { label: "X (Twitter)", href: "https://x.com" },
   { label: "Discord", href: "https://discord.com" },
   { label: "Telegram", href: "https://telegram.org" },

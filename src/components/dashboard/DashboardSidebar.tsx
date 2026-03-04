@@ -1,20 +1,24 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 
-export interface DashboardNavItem {
-  key: string;
+export interface DashboardNavItem<TKey extends string = string> {
+  key: TKey;
   label: string;
   icon: string;
 }
 
-interface DashboardSidebarProps {
-  items: DashboardNavItem[];
-  activeKey: string;
-  onSelect: (key: string) => void;
+interface DashboardSidebarProps<TKey extends string = string> {
+  items: DashboardNavItem<TKey>[];
+  activeKey: TKey;
+  onSelect: (key: TKey) => void;
 }
 
-export function DashboardSidebar({ items, activeKey, onSelect }: DashboardSidebarProps) {
+export function DashboardSidebar<TKey extends string>({
+  items,
+  activeKey,
+  onSelect,
+}: DashboardSidebarProps<TKey>) {
   return (
     <aside className="w-full md:w-[280px] bg-[#efefef] border-r border-black/10">
       <div className="px-6 py-6">
