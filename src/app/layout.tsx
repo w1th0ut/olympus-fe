@@ -3,8 +3,8 @@ import type { Metadata, Viewport } from "next";
 import Providers from "./providers";
 
 export const metadata: Metadata = {
-  title: "Apollos Finance",
-  description: "Apollos Finance landing page",
+  title: "Apollos Finance - The Cross-Chain, LVR-Protected, & Linearized Yield Protocol",
+  description: "Tame volatility, linearize gains",
   icons: {
     icon: "/images/Logo.png",
   },

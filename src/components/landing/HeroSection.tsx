@@ -49,9 +49,9 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
               animate="visible"
             >
               {[
-                "Earn",
-                "Stake",
-                "Pools",
+                "Linearized",
+                "No LVR",
+                "Anti-MEV",
               ].map((item) => (
                 <motion.button
                   key={item}

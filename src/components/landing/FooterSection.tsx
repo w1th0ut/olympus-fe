@@ -3,6 +3,20 @@
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/components/landing/animations";
 
+const footerNavLinks = [
+  { label: "Security", href: "/security" },
+  { label: "Documentation", href: "/docs" },
+  { label: "Transparency", href: "/transparency" },
+  { label: "Governance", href: "/governance" },
+];
+
+const footerSocialLinks = [
+  { label: "GitHub", href: "https://github.com" },
+  { label: "X (Twitter)", href: "https://x.com" },
+  { label: "Discord", href: "https://discord.com" },
+  { label: "Telegram", href: "https://telegram.org" },
+];
+
 export function FooterSection() {
   return (
     <motion.footer
@@ -39,23 +53,20 @@ export function FooterSection() {
             whileInView="visible"
             viewport={{ once: true }}
           >
-            {[
-              ["Security", "Documentation", "Transparency", "Governance"],
-              ["GitHub", "X (Twitter)", "Discord", "Telegram"],
-            ]
-              .flat()
-              .map((item) => (
-                <motion.a
-                  key={item}
-                  href={`#${item.toLowerCase().replace(/[^a-z]/g, "")}`}
-                  className="font-syne font-semibold text-neutral-950 text-base sm:text-lg relative overflow-hidden"
-                  variants={staggerItem}
-                  whileHover={{ x: 5, color: "#444" }}
-                  transition={{ duration: 0.3 }}
-                >
-                  {item}
-                </motion.a>
-              ))}
+            {[...footerNavLinks, ...footerSocialLinks].map((item) => (
+              <motion.a
+                key={item.label}
+                href={item.href}
+                className="font-syne font-semibold text-neutral-950 text-base sm:text-lg relative overflow-hidden"
+                variants={staggerItem}
+                whileHover={{ x: 5, color: "#444" }}
+                transition={{ duration: 0.3 }}
+                target={item.href.startsWith("http") ? "_blank" : undefined}
+                rel={item.href.startsWith("http") ? "noreferrer" : undefined}
+              >
+                {item.label}
+              </motion.a>
+            ))}
           </motion.div>
         </div>
 

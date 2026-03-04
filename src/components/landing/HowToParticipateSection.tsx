@@ -40,17 +40,30 @@ export function HowToParticipateSection() {
         </motion.h2>
 
         <motion.div
-          className="overflow-hidden rounded-[28px] border border-black/15 shadow-[0px_20px_30px_0px_rgba(0,0,0,0.15)]"
+          className="relative rounded-[28px] border border-black/15 shadow-[0px_20px_30px_0px_rgba(0,0,0,0.15)]"
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-100px" }}
           transition={{ duration: 0.8 }}
         >
-          <div className="flex flex-col md:flex-row">
+          <img
+            src="/icons/Circle_1.png"
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none absolute z-10 left-8 top-4 w-24 sm:w-28 -translate-x-[70%] -translate-y-1/2"
+          />
+          <img
+            src="/icons/Circle_2.png"
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none absolute z-10 right-8 top-80 w-24 sm:w-28 translate-x-[70%] -translate-y-1/2"
+          />
+
+          <div className="relative z-0 flex flex-col md:flex-row overflow-hidden rounded-[28px]">
             {cards.map((card) => (
               <div
                 key={card.title}
-                className={`flex-1 ${card.bg} ${card.text} px-8 py-10 md:px-10 md:py-12`}
+                className={`relative flex-1 ${card.bg} ${card.text} px-8 py-10 md:px-10 md:py-12`}
               >
                 <div className="flex items-center justify-end">
                   <div

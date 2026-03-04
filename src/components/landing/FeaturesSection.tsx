@@ -31,7 +31,7 @@ export function FeaturesSection({ sectionImageY }: FeaturesSectionProps) {
       <div className="relative z-10 flex-1 flex flex-col justify-center px-6 sm:px-8 lg:px-11 py-16">
         {/* Right-aligned content */}
         <div className="ml-auto w-full max-w-[500px] lg:mr-[10%] space-y-16 lg:space-y-20">
-          {/* Boosted Pools Section */}
+          {/* Linear Yield Section */}
           <AnimatedSection>
             <motion.div
               className="space-y-4"
@@ -45,22 +45,22 @@ export function FeaturesSection({ sectionImageY }: FeaturesSectionProps) {
                 whileHover={{ x: 10 }}
                 transition={{ duration: 0.3 }}
               >
-                BOOSTED POOLS
+                Linear Yield
               </motion.h2>
               <p className="font-manrope font-light text-neutral-950 text-xl sm:text-2xl">
-                High-performance liquidity designed to increase yield while softening impermanent loss.
+                Using a 2x Leverage Strategy from Aave to neutralize volatile asset price exposure.
               </p>
               <motion.button
                 className="bg-black/25 text-neutral-950 border border-neutral-950 rounded px-8 py-5 shadow-[12px_12px_12px_0px_rgba(0,0,0,0.50)] transition-colors duration-300 hover:bg-white hover:text-neutral-950 hover:border-neutral-950"
               >
                 <span className="font-syne font-semibold text-xl sm:text-2xl">
-                  Join a Pool
+                  Start Earning
                 </span>
               </motion.button>
             </motion.div>
           </AnimatedSection>
 
-          {/* Oracle Pricing Section */}
+          {/* Prevent LVR Section */}
           <AnimatedSection>
             <motion.div
               className="space-y-4"
@@ -74,22 +74,22 @@ export function FeaturesSection({ sectionImageY }: FeaturesSectionProps) {
                 whileHover={{ x: 10 }}
                 transition={{ duration: 0.3 }}
               >
-                ORACLE PRICING
+                Prevent LVR
               </motion.h2>
               <p className="font-manrope font-light text-neutral-950 text-xl sm:text-2xl">
-                Pricing follows trusted oracles to reduce toxic arbitrage and keep pools aligned.
+                Chainlink Workflows to detect market volatility via Uniswap V4 Hooks.
               </p>
               <motion.button
                 className="bg-black/25 text-neutral-950 border border-neutral-950 rounded px-8 py-5 shadow-[12px_12px_12px_0px_rgba(0,0,0,0.50)] transition-colors duration-300 hover:bg-white hover:text-neutral-950 hover:border-neutral-950"
               >
                 <span className="font-syne font-semibold text-xl sm:text-2xl">
-                  See Oracles
+                  See in Action
                 </span>
               </motion.button>
             </motion.div>
           </AnimatedSection>
 
-          {/* LVR Shield Section */}
+          {/* Anti-MEV Bot Section */}
           <AnimatedSection>
             <motion.div
               className="space-y-4"
@@ -103,16 +103,16 @@ export function FeaturesSection({ sectionImageY }: FeaturesSectionProps) {
                 whileHover={{ x: 10 }}
                 transition={{ duration: 0.3 }}
               >
-                LVR SHIELD
+                Anti-MEV Bot
               </motion.h2>
               <p className="font-manrope font-light text-neutral-950 text-xl sm:text-2xl">
-                Prevent loss versus rebalancing with oracle-aligned pricing.
+                Restricted deposit so only ApollosVault can add liquidity.
               </p>
               <motion.button
                 className="bg-black/25 text-neutral-950 border border-neutral-950 rounded px-8 py-5 shadow-[12px_12px_12px_0px_rgba(0,0,0,0.50)] transition-colors duration-300 hover:bg-white hover:text-neutral-950 hover:border-neutral-950"
               >
                 <span className="font-syne font-semibold text-xl sm:text-2xl">
-                  Learn LVR
+                  See Pools
                 </span>
               </motion.button>
             </motion.div>

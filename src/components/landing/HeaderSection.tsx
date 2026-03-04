@@ -3,6 +3,13 @@
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/components/landing/animations";
 
+const navItems = [
+  { label: "Security", href: "/security" },
+  { label: "Docs", href: "/docs" },
+  { label: "Transparency", href: "/transparency" },
+  { label: "Governance", href: "/governance" },
+];
+
 const navLinkVariants = {
   rest: { scale: 1 },
   hover: { scale: 1.05 },
@@ -50,10 +57,10 @@ export function HeaderSection() {
           initial="hidden"
           animate="visible"
         >
-          {["Security", "Docs", "Transparency", "Governance"].map((item) => (
+          {navItems.map((item) => (
             <motion.a
-              key={item}
-              href={`#${item.toLowerCase()}`}
+              key={item.label}
+              href={item.href}
               className="font-manrope font-bold text-neutral-950 text-lg xl:text-xl relative pb-2"
               variants={staggerItem}
               initial="rest"
@@ -61,7 +68,7 @@ export function HeaderSection() {
               whileHover="hover"
             >
               <motion.span variants={navLinkVariants} className="relative z-10 inline-block">
-                {item}
+                {item.label}
               </motion.span>
               <motion.div
                 variants={navUnderlineVariants}
@@ -112,4 +119,3 @@ export function HeaderSection() {
     </motion.header>
   );
 }
-

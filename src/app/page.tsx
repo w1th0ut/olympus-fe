@@ -7,6 +7,7 @@ import {
   FeaturesSection,
   HowToParticipateSection,
   FAQSection,
+  IntegratedWithSection,
   VisualSection,
   FooterSection,
   Marquee,
@@ -24,6 +25,7 @@ export default function Home() {
       <FeaturesSection sectionImageY={section2ImageY} />
       <HowToParticipateSection />
       <FAQSection />
+      <IntegratedWithSection />
       <VisualSection />
       <FooterSection />
       <Marquee />

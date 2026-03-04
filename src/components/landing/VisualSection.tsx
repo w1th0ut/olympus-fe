@@ -8,7 +8,7 @@ export function VisualSection() {
     <section className="relative bg-[#e0e0e0]">
       <div className="flex flex-col items-center text-center px-6 sm:px-8 lg:px-11 pt-6 sm:pt-8 lg:pt-10 translate-y-[-24px]">
         <h2 className="font-syne font-bold text-neutral-950 text-[32px] leading-tight">
-          Be smart, use Apollos Finance
+          Tame volatility, linearize gains
         </h2>
         <button
           type="button"
