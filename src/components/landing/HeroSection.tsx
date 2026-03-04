@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { motion, type MotionValue } from "framer-motion";
 import { useRouter } from "next/navigation";
@@ -8,7 +8,6 @@ import { HeaderSection } from "@/components/landing/HeaderSection";
 interface HeroSectionProps {
   heroImageY: MotionValue<number>;
 }
-
 
 export function HeroSection({ heroImageY }: HeroSectionProps) {
   const router = useRouter();
@@ -110,12 +109,16 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
             <motion.button
               type="button"
               onClick={() => router.push("/dashboard")}
-              className="bg-[#111111] text-white border border-neutral-950 rounded px-8 sm:px-12 py-5 sm:py-6 shadow-[12px_12px_12px_0px_rgba(0,0,0,0.50)] mb-4 lg:mb-6 transition-colors duration-300 hover:bg-white hover:text-neutral-950 hover:border-neutral-950"
+              className="group relative overflow-hidden bg-[#111111] text-white border border-neutral-950 rounded px-8 sm:px-12 py-5 sm:py-6 shadow-[12px_12px_12px_0px_rgba(0,0,0,0.50)] mb-4 lg:mb-6"
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.6, delay: 1.2 }}
             >
-              <span className="font-syne font-bold text-2xl sm:text-[32px]">
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 z-0 translate-x-full bg-white transition-transform duration-500 ease-out group-hover:translate-x-0"
+              />
+              <span className="relative z-10 font-syne font-bold text-2xl sm:text-[32px] transition-colors duration-500 group-hover:text-neutral-950">
                 Invest Now
               </span>
             </motion.button>
@@ -125,6 +128,3 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
     </section>
   );
 }
-
-
-

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { motion, type MotionValue } from "framer-motion";
 import { fadeInRight } from "@/components/landing/animations";
@@ -51,7 +51,7 @@ export function FeaturesSection({ sectionImageY }: FeaturesSectionProps) {
                 Using a 2x Leverage Strategy from Aave to neutralize volatile asset price exposure.
               </p>
               <motion.button
-                className="bg-black/25 text-neutral-950 border border-neutral-950 rounded px-8 py-5 shadow-[12px_12px_12px_0px_rgba(0,0,0,0.50)] transition-colors duration-300 hover:bg-white hover:text-neutral-950 hover:border-neutral-950"
+                className="w-[220px] sm:w-[240px] flex items-center justify-center bg-black/25 text-neutral-950 border border-neutral-950 rounded px-8 py-5 shadow-[12px_12px_12px_0px_rgba(0,0,0,0.50)] transition-colors duration-300 hover:bg-white hover:text-neutral-950 hover:border-neutral-950"
               >
                 <span className="font-syne font-semibold text-xl sm:text-2xl">
                   Start Earning
@@ -80,7 +80,7 @@ export function FeaturesSection({ sectionImageY }: FeaturesSectionProps) {
                 Chainlink Workflows to detect market volatility via Uniswap V4 Hooks.
               </p>
               <motion.button
-                className="bg-black/25 text-neutral-950 border border-neutral-950 rounded px-8 py-5 shadow-[12px_12px_12px_0px_rgba(0,0,0,0.50)] transition-colors duration-300 hover:bg-white hover:text-neutral-950 hover:border-neutral-950"
+                className="w-[220px] sm:w-[240px] flex items-center justify-center bg-black/25 text-neutral-950 border border-neutral-950 rounded px-8 py-5 shadow-[12px_12px_12px_0px_rgba(0,0,0,0.50)] transition-colors duration-300 hover:bg-white hover:text-neutral-950 hover:border-neutral-950"
               >
                 <span className="font-syne font-semibold text-xl sm:text-2xl">
                   See in Action
@@ -109,7 +109,7 @@ export function FeaturesSection({ sectionImageY }: FeaturesSectionProps) {
                 Restricted deposit so only ApollosVault can add liquidity.
               </p>
               <motion.button
-                className="bg-black/25 text-neutral-950 border border-neutral-950 rounded px-8 py-5 shadow-[12px_12px_12px_0px_rgba(0,0,0,0.50)] transition-colors duration-300 hover:bg-white hover:text-neutral-950 hover:border-neutral-950"
+                className="w-[220px] sm:w-[240px] flex items-center justify-center bg-black/25 text-neutral-950 border border-neutral-950 rounded px-8 py-5 shadow-[12px_12px_12px_0px_rgba(0,0,0,0.50)] transition-colors duration-300 hover:bg-white hover:text-neutral-950 hover:border-neutral-950"
               >
                 <span className="font-syne font-semibold text-xl sm:text-2xl">
                   See Pools
