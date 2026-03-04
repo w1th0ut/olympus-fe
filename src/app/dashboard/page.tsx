@@ -7,6 +7,7 @@ import {
 } from "@/components/dashboard/DashboardSidebar";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { EarnSection } from "@/components/dashboard/EarnSection";
+import { LendBorrowMonitorSection } from "@/components/dashboard/LendBorrowMonitorSection";
 import { PlaceholderSection } from "@/components/dashboard/PlaceholderSection";
 
 const sectionMeta = {
@@ -24,7 +25,7 @@ const sectionMeta = {
   },
   "lend-borrow": {
     title: "Lend & Borrow",
-    description: "Borrow and lend assets",
+    description: "Aave V3 Lending Market Overview",
   },
   bridge: {
     title: "Bridge",
@@ -104,7 +105,7 @@ export default function DashboardPage() {
           {activeKey === "earn" ? <EarnSection /> : null}
           {activeKey === "balances" ? <PlaceholderSection title="My Balances" /> : null}
           {activeKey === "pools" ? <PlaceholderSection title="DEX Pools" /> : null}
-          {activeKey === "lend-borrow" ? <PlaceholderSection title="Lend & Borrow" /> : null}
+          {activeKey === "lend-borrow" ? <LendBorrowMonitorSection /> : null}
           {activeKey === "bridge" ? <PlaceholderSection title="Bridge" /> : null}
         </main>
       </div>
