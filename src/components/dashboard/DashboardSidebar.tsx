@@ -14,13 +14,31 @@ interface DashboardSidebarProps<TKey extends string = string> {
   onSelect: (key: TKey) => void;
 }
 
+const socialLinks = [
+  {
+    label: "GitHub",
+    href: "https://github.com/Apollos-Finance",
+    icon: "/icons/Logo-Github.png",
+  },
+  {
+    label: "X",
+    href: "https://x.com",
+    icon: "/icons/Logo-X.png",
+  },
+  {
+    label: "Discord",
+    href: "https://discord.com",
+    icon: "/icons/Logo-Discord.png",
+  },
+] as const;
+
 export function DashboardSidebar<TKey extends string>({
   items,
   activeKey,
   onSelect,
 }: DashboardSidebarProps<TKey>) {
   return (
-    <aside className="w-full md:w-[280px] bg-[#efefef] border-r border-black/10">
+    <aside className="w-full md:w-[280px] md:sticky md:top-0 md:self-start md:h-screen md:overflow-y-auto md:shrink-0 md:flex md:flex-col bg-[#efefef] border-r border-black/10">
       <div className="px-6 py-6">
         <Link href="/" className="flex items-center gap-3">
           <img
@@ -39,7 +57,7 @@ export function DashboardSidebar<TKey extends string>({
         </Link>
       </div>
 
-      <nav className="px-4 pb-6">
+      <nav className="px-4 pb-6 md:flex-1">
         {items.map((item) => {
           const isActive = item.key === activeKey;
           return (
@@ -57,6 +75,23 @@ export function DashboardSidebar<TKey extends string>({
           );
         })}
       </nav>
+
+      <div className="px-9 pb-6 pt-4 md:mt-auto">
+        <div className="flex items-center justify-between">
+          {socialLinks.map((item) => (
+            <a
+              key={item.label}
+              href={item.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={item.label}
+              className="inline-flex items-center justify-center rounded-full transition-transform duration-200 hover:scale-105"
+            >
+              <img src={item.icon} alt={item.label} className="h-9 w-9 object-contain" />
+            </a>
+          ))}
+        </div>
+      </div>
     </aside>
   );
 }

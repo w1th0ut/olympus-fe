@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { motion } from "framer-motion";
 import { ArrowUpRight, CircleHelp } from "lucide-react";
 
 const reserveMetrics = [
@@ -35,19 +37,41 @@ const creditLine = {
 const vaultHealth = {
   healthFactor: 2.15,
   liquidationThreshold: 1.0,
-  totalCollateral: "$2.10M (880 ETH)",
+  totalCollateral: "$2.10M (880 WETH)",
   totalDebt: "$150,000 (150,000 USDC)",
 };
 
-const historicalHealthFactor = [
-  { label: "Day 1", value: 2.06 },
-  { label: "Day 2", value: 2.11 },
-  { label: "Day 3", value: 2.18 },
-  { label: "Day 4", value: 2.12 },
-  { label: "Day 5", value: 2.08 },
-  { label: "Day 6", value: 2.2 },
-  { label: "Day 7", value: 2.15 },
-] as const;
+const healthFactorSeries = {
+  "24h": [
+    { label: "00h", value: 2.11 },
+    { label: "04h", value: 2.08 },
+    { label: "08h", value: 2.13 },
+    { label: "12h", value: 2.1 },
+    { label: "16h", value: 2.17 },
+    { label: "20h", value: 2.14 },
+    { label: "24h", value: 2.15 },
+  ],
+  "7d": [
+    { label: "Day 1", value: 2.06 },
+    { label: "Day 2", value: 2.11 },
+    { label: "Day 3", value: 2.18 },
+    { label: "Day 4", value: 2.12 },
+    { label: "Day 5", value: 2.08 },
+    { label: "Day 6", value: 2.2 },
+    { label: "Day 7", value: 2.15 },
+  ],
+  "30d": [
+    { label: "D1", value: 2.02 },
+    { label: "D5", value: 2.09 },
+    { label: "D10", value: 2.16 },
+    { label: "D15", value: 2.1 },
+    { label: "D20", value: 2.21 },
+    { label: "D25", value: 2.17 },
+    { label: "D30", value: 2.15 },
+  ],
+} as const;
+
+type HealthRange = keyof typeof healthFactorSeries;
 
 const CHART_WIDTH = 760;
 const CHART_HEIGHT = 230;
@@ -83,6 +107,9 @@ function ProgressRing({ value }: { value: number }) {
 }
 
 export function LendBorrowMonitorSection() {
+  const [healthRange, setHealthRange] = useState<HealthRange>("7d");
+  const selectedHealthSeries = healthFactorSeries[healthRange];
+
   const utilizationPercent = (creditLine.used / creditLine.total) * 100;
 
   const hfTone =
@@ -99,10 +126,9 @@ export function LendBorrowMonitorSection() {
         ? "Risk: Monitor closely"
         : "Risk: Healthy";
 
-  const chartPoints = historicalHealthFactor.map((item, index) => {
-    const x =
-      CHART_PADDING +
-      (index * (CHART_WIDTH - CHART_PADDING * 2)) / (historicalHealthFactor.length - 1);
+  const pointsDivider = Math.max(1, selectedHealthSeries.length - 1);
+  const chartPoints = selectedHealthSeries.map((item, index) => {
+    const x = CHART_PADDING + (index * (CHART_WIDTH - CHART_PADDING * 2)) / pointsDivider;
     const yRatio = (item.value - CHART_MIN) / (CHART_MAX - CHART_MIN);
     const y = CHART_HEIGHT - CHART_PADDING - yRatio * (CHART_HEIGHT - CHART_PADDING * 2);
     return { ...item, x, y };
@@ -169,7 +195,9 @@ export function LendBorrowMonitorSection() {
                     Total supplied
                     <CircleHelp className="h-4 w-4" />
                   </p>
-                  <p className="font-syne text-lg font-bold leading-tight text-neutral-950">{supplyInfo.totalLabel}</p>
+                  <p className="font-syne text-lg font-bold leading-tight text-neutral-950">
+                    {supplyInfo.totalLabel}
+                  </p>
                   <p className="font-manrope text-sm text-neutral-600">{supplyInfo.totalSubLabel}</p>
                 </div>
 
@@ -193,7 +221,9 @@ export function LendBorrowMonitorSection() {
                     Total borrowed
                     <CircleHelp className="h-4 w-4" />
                   </p>
-                  <p className="font-syne text-lg font-bold leading-tight text-neutral-950">{borrowInfo.totalLabel}</p>
+                  <p className="font-syne text-lg font-bold leading-tight text-neutral-950">
+                    {borrowInfo.totalLabel}
+                  </p>
                   <p className="font-manrope text-sm text-neutral-600">{borrowInfo.totalSubLabel}</p>
                 </div>
 
@@ -202,12 +232,16 @@ export function LendBorrowMonitorSection() {
                     APY, variable
                     <CircleHelp className="h-4 w-4" />
                   </p>
-                  <p className="font-syne text-lg font-bold leading-tight text-neutral-950">{borrowInfo.variableApy}</p>
+                  <p className="font-syne text-lg font-bold leading-tight text-neutral-950">
+                    {borrowInfo.variableApy}
+                  </p>
                 </div>
 
                 <div>
                   <p className="font-manrope text-sm text-neutral-600">Borrow cap</p>
-                  <p className="font-syne text-lg font-bold leading-tight text-neutral-950">{borrowInfo.borrowCap}</p>
+                  <p className="font-syne text-lg font-bold leading-tight text-neutral-950">
+                    {borrowInfo.borrowCap}
+                  </p>
                   <p className="font-manrope text-sm text-neutral-600">{borrowInfo.borrowCapSubLabel}</p>
                 </div>
               </div>
@@ -294,8 +328,27 @@ export function LendBorrowMonitorSection() {
         <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="font-syne text-lg font-bold text-neutral-950 sm:text-xl">
-              Historical Health Factor (7 Days)
+              Historical Health Factor
             </h3>
+            <div className="inline-flex rounded-full border border-black/15 bg-black/[0.03] p-1">
+              {(["24h", "7d", "30d"] as const).map((range) => {
+                const active = healthRange === range;
+                return (
+                  <button
+                    key={range}
+                    type="button"
+                    onClick={() => setHealthRange(range)}
+                    className={`rounded-full px-3 py-1 font-syne text-xs font-bold transition-colors sm:text-sm ${
+                      active
+                        ? "bg-neutral-950 text-white"
+                        : "text-neutral-700 hover:bg-black/10"
+                    }`}
+                  >
+                    {range === "24h" ? "24H" : range === "7d" ? "7 Days" : "30 Days"}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div className="mt-5 overflow-x-auto">
@@ -326,16 +379,39 @@ export function LendBorrowMonitorSection() {
                   strokeDasharray="6 6"
                 />
 
-                <path d={areaPath} fill="rgba(16,185,129,0.12)" />
-                <path d={linePath} fill="none" stroke="#0f172a" strokeWidth="3" />
+                <motion.path
+                  d={areaPath}
+                  animate={{ d: areaPath }}
+                  transition={{ duration: 0.45, ease: "easeInOut" }}
+                  fill="rgba(16,185,129,0.12)"
+                />
+                <motion.path
+                  d={linePath}
+                  animate={{ d: linePath }}
+                  transition={{ duration: 0.45, ease: "easeInOut" }}
+                  fill="none"
+                  stroke="#0f172a"
+                  strokeWidth="3"
+                />
 
-                {chartPoints.map((point) => (
-                  <circle key={point.label} cx={point.x} cy={point.y} r="5" fill="#111111" />
+                {chartPoints.map((point, index) => (
+                  <motion.circle
+                    key={`point-${index}`}
+                    cx={point.x}
+                    cy={point.y}
+                    animate={{ cx: point.x, cy: point.y }}
+                    transition={{ duration: 0.45, ease: "easeInOut" }}
+                    r="5"
+                    fill="#111111"
+                  />
                 ))}
               </svg>
 
-              <div className="mt-2 grid grid-cols-7">
-                {historicalHealthFactor.map((item) => (
+              <div
+                className="mt-2 grid gap-1"
+                style={{ gridTemplateColumns: `repeat(${selectedHealthSeries.length}, minmax(0, 1fr))` }}
+              >
+                {selectedHealthSeries.map((item) => (
                   <div key={item.label} className="text-center">
                     <p className="font-manrope text-xs text-neutral-600">{item.label}</p>
                     <p className="font-syne text-sm font-bold text-neutral-950">{item.value.toFixed(2)}</p>
