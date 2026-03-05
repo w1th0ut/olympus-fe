@@ -6,11 +6,11 @@ import {
   type DashboardNavItem,
 } from "@/components/dashboard/DashboardSidebar";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
+import { BridgeSection } from "@/components/dashboard/BridgeSection";
 import { DexPoolsSection } from "@/components/dashboard/DexPoolsSection";
 import { EarnSection } from "@/components/dashboard/EarnSection";
 import { LendBorrowMonitorSection } from "@/components/dashboard/LendBorrowMonitorSection";
 import { MyBalancesSection } from "@/components/dashboard/MyBalancesSection";
-import { PlaceholderSection } from "@/components/dashboard/PlaceholderSection";
 
 const sectionMeta = {
   balances: {
@@ -27,11 +27,11 @@ const sectionMeta = {
   },
   "lend-borrow": {
     title: "Lend & Borrow",
-    description: "Aave V3 Lending Market Overview",
+    description: "Aave Lending Market Overview",
   },
   bridge: {
     title: "Bridge",
-    description: "Bridge assets across networks",
+    description: "Bridge assets across networks via CCIP Chainlink",
   },
 } as const;
 
@@ -108,7 +108,7 @@ export default function DashboardPage() {
           {activeKey === "balances" ? <MyBalancesSection /> : null}
           {activeKey === "pools" ? <DexPoolsSection /> : null}
           {activeKey === "lend-borrow" ? <LendBorrowMonitorSection /> : null}
-          {activeKey === "bridge" ? <PlaceholderSection title="Bridge" /> : null}
+          {activeKey === "bridge" ? <BridgeSection /> : null}
         </main>
       </div>
     </div>
