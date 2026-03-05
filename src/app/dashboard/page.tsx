@@ -6,14 +6,16 @@ import {
   type DashboardNavItem,
 } from "@/components/dashboard/DashboardSidebar";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
+import { DexPoolsSection } from "@/components/dashboard/DexPoolsSection";
 import { EarnSection } from "@/components/dashboard/EarnSection";
 import { LendBorrowMonitorSection } from "@/components/dashboard/LendBorrowMonitorSection";
+import { MyBalancesSection } from "@/components/dashboard/MyBalancesSection";
 import { PlaceholderSection } from "@/components/dashboard/PlaceholderSection";
 
 const sectionMeta = {
   balances: {
     title: "My Balances",
-    description: "Manage your balances",
+    description: "Manage your portfolio",
   },
   earn: {
     title: "Earn",
@@ -21,7 +23,7 @@ const sectionMeta = {
   },
   pools: {
     title: "DEX Pools",
-    description: "Explore liquidity pools",
+    description: "Explore Uniswap liquidity pools",
   },
   "lend-borrow": {
     title: "Lend & Borrow",
@@ -99,12 +101,12 @@ export default function DashboardPage() {
       <div className="flex min-h-screen flex-col md:flex-row">
         <DashboardSidebar items={navItems} activeKey={activeKey} onSelect={handleSelect} />
 
-        <main className="flex-1 px-6 sm:px-8 lg:px-12 py-8">
+        <main className="flex-1 px-6 py-8 sm:px-8 lg:px-12">
           <DashboardHeader title={active.title} description={active.description} />
 
           {activeKey === "earn" ? <EarnSection /> : null}
-          {activeKey === "balances" ? <PlaceholderSection title="My Balances" /> : null}
-          {activeKey === "pools" ? <PlaceholderSection title="DEX Pools" /> : null}
+          {activeKey === "balances" ? <MyBalancesSection /> : null}
+          {activeKey === "pools" ? <DexPoolsSection /> : null}
           {activeKey === "lend-borrow" ? <LendBorrowMonitorSection /> : null}
           {activeKey === "bridge" ? <PlaceholderSection title="Bridge" /> : null}
         </main>

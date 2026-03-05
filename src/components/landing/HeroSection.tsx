@@ -73,7 +73,7 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
 
             {/* Main Headline */}
             <motion.h1
-              className="font-playfair font-bold italic text-neutral-950 text-4xl sm:text-5xl lg:text-7xl leading-[1.1] mb-3 lg:mb-4"
+              className="font-playfair font-bold italic text-neutral-950 text-3xl sm:text-4xl lg:text-6xl leading-[1.1] mb-3 lg:mb-4"
               initial={{ opacity: 0, y: 50 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.5 }}
@@ -83,13 +83,21 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.6, delay: 0.6 }}
               >
-                The First DeFi
+                The Cross-Chain
               </motion.span>
               <br />
               <motion.span
                 initial={{ opacity: 0, x: -30 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.6, delay: 0.8 }}
+                transition={{ duration: 0.6, delay: 0.75 }}
+              >
+                LVR-Protected
+              </motion.span>
+              <br />
+              <motion.span
+                initial={{ opacity: 0, x: -30 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.6, delay: 0.9 }}
               >
                 Linearized Yield Protocol
               </motion.span>
@@ -108,7 +116,7 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
             {/* CTA Button */}
             <motion.button
               type="button"
-              onClick={() => router.push("/dashboard")}
+              onClick={() => router.push("/dashboard?tab=earn")}
               className="group relative overflow-hidden bg-[#111111] text-white border border-neutral-950 rounded px-8 sm:px-12 py-5 sm:py-6 shadow-[12px_12px_12px_0px_rgba(0,0,0,0.50)] mb-4 lg:mb-6"
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}

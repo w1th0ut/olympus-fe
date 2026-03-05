@@ -1,5 +1,6 @@
-﻿"use client";
+"use client";
 
+import Link from "next/link";
 import { motion } from "framer-motion";
 
 const cards = [
@@ -12,6 +13,7 @@ const cards = [
     text: "text-neutral-950",
     button: "Enter Vault",
     iconBg: "bg-neutral-300",
+    href: "/dashboard?tab=earn",
   },
   {
     title: "Staked Vault",
@@ -22,8 +24,9 @@ const cards = [
     text: "text-neutral-950",
     button: "Stake Now",
     iconBg: "bg-white",
+    href: "/dashboard?tab=earn",
   },
-];
+] as const;
 
 export function HowToParticipateSection() {
   return (
@@ -80,12 +83,12 @@ export function HowToParticipateSection() {
                   {card.description}
                 </p>
 
-                <button
-                  type="button"
+                <Link
+                  href={card.href}
                   className="mt-8 inline-flex items-center rounded-full border border-neutral-950 px-6 py-2 font-syne font-bold text-sm transition-colors duration-300 hover:bg-neutral-950 hover:text-white"
                 >
                   {card.button}
-                </button>
+                </Link>
               </div>
             ))}
           </div>
@@ -94,4 +97,3 @@ export function HowToParticipateSection() {
     </section>
   );
 }
-
