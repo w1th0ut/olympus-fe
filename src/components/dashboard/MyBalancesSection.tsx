@@ -92,8 +92,8 @@ export function MyBalancesSection() {
           <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
             <p className="font-syne text-xl font-bold text-neutral-950">Portfolio Value</p>
             <div className="mt-4 flex items-center gap-4">
-              <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-black/20 bg-[#f5f5f5]">
-                <img src="/icons/Logo-Wallet.png" alt="" className="h-6 w-6 object-contain" />
+              <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl">
+                <img src="/icons/Logo-Portfolio.png" alt="" className="h-6 w-6 object-contain" />
               </div>
               <div>
                 <p className="font-syne text-4xl font-bold leading-none text-neutral-950">
@@ -156,7 +156,11 @@ export function MyBalancesSection() {
                       className="grid grid-cols-[1.7fr_0.9fr_1fr_0.8fr] items-center px-3 py-3"
                     >
                       <div className="flex items-center gap-3">
-                        <img src={position.icon} alt="" className="h-9 w-9 rounded-full object-contain" />
+                        <img
+                          src={position.icon}
+                          alt=""
+                          className="h-10 w-10 object-contain"
+                        />
                         <span className="font-syne text-lg font-bold text-neutral-950">{position.symbol}</span>
                       </div>
                       <span className="font-syne text-lg font-bold text-neutral-950">{position.balance}</span>
