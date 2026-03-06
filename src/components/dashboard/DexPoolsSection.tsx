@@ -198,6 +198,24 @@ function formatTokenAmount(value: number) {
   }).format(value);
 }
 
+function parseCompactAmount(value: string) {
+  const match = value.match(/([\d.,]+)\s*([KMBT]?)/i);
+  if (!match) {
+    return 0;
+  }
+
+  const numeric = Number.parseFloat(match[1].replace(/,/g, ""));
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+
+  const unit = match[2]?.toUpperCase() ?? "";
+  const multiplier =
+    unit === "K" ? 1_000 : unit === "M" ? 1_000_000 : unit === "B" ? 1_000_000_000 : unit === "T" ? 1_000_000_000_000 : 1;
+
+  return numeric * multiplier;
+}
+
 function valueLabel(mode: MetricMode, timeframe: Timeframe) {
   if (mode === "Price") {
     return "Current pool price";
@@ -372,6 +390,18 @@ export function DexPoolsSection() {
   const sellUsdValue = isTokenReversed ? sellAmount : sellAmount * selectedPool.priceBase;
   const buyUsdValue = isTokenReversed ? buyAmount * selectedPool.priceBase : buyAmount;
   const canSwap = sellAmount > 0;
+  const reserve0Amount = parseCompactAmount(selectedPool.reserve0);
+  const reserve1Amount = parseCompactAmount(selectedPool.reserve1);
+  const reserve0UsdValue = reserve0Amount * selectedPool.priceBase;
+  const reserve1UsdValue = reserve1Amount;
+  const totalReserveUsd = reserve0UsdValue + reserve1UsdValue;
+  const reserve0ShareRaw = totalReserveUsd > 0 ? (reserve0UsdValue / totalReserveUsd) * 100 : 50;
+  const reserve0Share = Number.isFinite(reserve0ShareRaw) ? reserve0ShareRaw : 50;
+  const reserve1Share = 100 - reserve0Share;
+  const reserve0BarWidth = Math.min(98, Math.max(2, reserve0Share));
+  const reserve1BarWidth = 100 - reserve0BarWidth;
+  const reserve0Color =
+    pairToken0 === "WETH" ? "#111827" : pairToken0 === "WBTC" ? "#f7931a" : "#4f66ff";
 
   return (
     <div className="mt-8 space-y-4 text-neutral-950">
@@ -652,7 +682,19 @@ export function DexPoolsSection() {
                   <p className="font-syne text-xl font-bold text-neutral-950">{selectedPool.reserve1}</p>
                 </div>
                 <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-black/10">
-                  <div className="h-full w-[52%] bg-gradient-to-r from-fuchsia-500 to-pink-400" />
+                  <div className="flex h-full w-full">
+                    <div
+                      className="h-full transition-all"
+                      style={{ width: `${reserve0BarWidth}%`, backgroundColor: reserve0Color }}
+                    />
+                    <div className="h-full bg-[#ec4899] transition-all" style={{ width: `${reserve1BarWidth}%` }} />
+                  </div>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <p className="font-manrope text-xs" style={{ color: reserve0Color }}>
+                    {pairToken0} {reserve0Share.toFixed(1)}%
+                  </p>
+                  <p className="font-manrope text-xs text-[#ec4899]">{pairToken1} {reserve1Share.toFixed(1)}%</p>
                 </div>
               </div>
 

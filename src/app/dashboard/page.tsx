@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   DashboardSidebar,
@@ -75,7 +76,7 @@ function isDashboardSectionKey(value: string | null): value is DashboardSectionK
   );
 }
 
-export default function DashboardPage() {
+function DashboardPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -112,5 +113,13 @@ export default function DashboardPage() {
         </main>
       </div>
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#e0e0e0]" />}>
+      <DashboardPageContent />
+    </Suspense>
   );
 }
