@@ -139,7 +139,7 @@ export function BridgeSection() {
                   Base
                 </span>
                 <ArrowRight className="h-4 w-4" />
-                <span className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1 font-syne text-sm font-bold text-emerald-700">
+                <span className="rounded-lg border border-black/15 bg-white px-3 py-1 font-syne text-sm font-bold">
                   Arbitrum
                 </span>
               </div>
