@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { formatUnits, parseUnits, type Address } from "viem";
 import {
   ArrowDown,
   ArrowLeft,
@@ -11,6 +12,17 @@ import {
   Settings,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import {
+  useAccount,
+  useChainId,
+  useReadContracts,
+  useSwitchChain,
+  useWaitForTransactionReceipt,
+  useWriteContract,
+} from "wagmi";
+import { arbitrumSepolia } from "wagmi/chains";
+import { aaveAbi, erc20Abi, uniswapAbi } from "@/lib/apollos-abi";
+import { apollosAddresses, toPoolKey } from "@/lib/apollos";
 
 type Timeframe = "1H" | "1D" | "1W" | "1M" | "1Y" | "ALL";
 type MetricMode = "Price" | "Volume";
@@ -118,6 +130,12 @@ const pools: PoolRow[] = [
     volumeBase: 390_000,
   },
 ];
+
+const poolMeta: Record<string, { tokenAddress: Address; baseDecimals: number; baseSymbol: "WETH" | "WBTC" | "LINK" }> = {
+  "weth-usdc": { tokenAddress: apollosAddresses.weth, baseDecimals: 18, baseSymbol: "WETH" },
+  "wbtc-usdc": { tokenAddress: apollosAddresses.wbtc, baseDecimals: 8, baseSymbol: "WBTC" },
+  "link-usdc": { tokenAddress: apollosAddresses.link, baseDecimals: 18, baseSymbol: "LINK" },
+};
 
 const timeframeButtons: Timeframe[] = ["1H", "1D", "1W", "1M", "1Y", "ALL"];
 const metricButtons: MetricMode[] = ["Price", "Volume"];
@@ -246,6 +264,14 @@ export function DexPoolsSection() {
   const [metricMode, setMetricMode] = useState<MetricMode>("Volume");
   const [isTokenReversed, setIsTokenReversed] = useState(false);
   const [sellAmountInput, setSellAmountInput] = useState("");
+
+  const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const isOnArbitrum = chainId === arbitrumSepolia.id;
+  const { switchChainAsync, isPending: isSwitchPending } = useSwitchChain();
+  const { writeContractAsync, data: swapTxHash, isPending: isWritePending } = useWriteContract();
+  const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash: swapTxHash });
+  const isBusy = isSwitchPending || isWritePending || isConfirming;
 
   const selectedPool = pools.find((pool) => pool.id === selectedPoolId) ?? null;
 
@@ -382,26 +408,195 @@ export function DexPoolsSection() {
   const buyToken = isTokenReversed ? pairToken0 : pairToken1;
   const sellIcon = isTokenReversed ? selectedPool.icon1 : selectedPool.icon0;
   const buyIcon = isTokenReversed ? selectedPool.icon0 : selectedPool.icon1;
-  const conversionRate = isTokenReversed ? 1 / selectedPool.priceBase : selectedPool.priceBase;
+
+  const selectedPoolMeta = poolMeta[selectedPool.id] ?? poolMeta["weth-usdc"];
+  const selectedPoolKey = toPoolKey(selectedPoolMeta.tokenAddress, apollosAddresses.usdc);
+
+  const { data: selectedPoolReads } = useReadContracts({
+    contracts: [
+      {
+        address: apollosAddresses.uniswapPool,
+        abi: uniswapAbi,
+        functionName: "getPoolStateByKey",
+        args: [selectedPoolKey],
+        chainId: arbitrumSepolia.id,
+      },
+      {
+        address: apollosAddresses.aavePool,
+        abi: aaveAbi,
+        functionName: "assetPrices",
+        args: [selectedPoolMeta.tokenAddress],
+        chainId: arbitrumSepolia.id,
+      },
+    ],
+    allowFailure: true,
+    query: {
+      enabled: Boolean(selectedPoolMeta),
+      refetchInterval: 10000,
+    },
+  });
+
+  const poolState = (selectedPoolReads?.[0]?.result as
+    | { reserve0: bigint; reserve1: bigint }
+    | undefined);
+  const oraclePriceRaw = (selectedPoolReads?.[1]?.result as bigint | undefined) ?? BigInt(0);
+
+  const isBaseCurrency0 =
+    selectedPoolMeta.tokenAddress.toLowerCase() < apollosAddresses.usdc.toLowerCase();
+  const reserveBaseRaw = isBaseCurrency0
+    ? (poolState?.reserve0 ?? BigInt(0))
+    : (poolState?.reserve1 ?? BigInt(0));
+  const reserveUsdcRaw = isBaseCurrency0
+    ? (poolState?.reserve1 ?? BigInt(0))
+    : (poolState?.reserve0 ?? BigInt(0));
+
+  const reserve0AmountOnchain = Number(formatUnits(reserveBaseRaw, selectedPoolMeta.baseDecimals));
+  const reserve1AmountOnchain = Number(formatUnits(reserveUsdcRaw, 6));
+  const oraclePrice = Number(formatUnits(oraclePriceRaw, 8));
+
+  const reserve0Amount = reserve0AmountOnchain > 0
+    ? reserve0AmountOnchain
+    : parseCompactAmount(selectedPool.reserve0);
+  const reserve1Amount = reserve1AmountOnchain > 0
+    ? reserve1AmountOnchain
+    : parseCompactAmount(selectedPool.reserve1);
+
+  const dynamicPrice = reserve0Amount > 0
+    ? reserve1Amount / reserve0Amount
+    : oraclePrice > 0
+      ? oraclePrice
+      : selectedPool.priceBase;
+  const conversionRate = isTokenReversed ? 1 / dynamicPrice : dynamicPrice;
+
+  const sellDecimals = isTokenReversed ? 6 : selectedPoolMeta.baseDecimals;
+  const buyDecimals = isTokenReversed ? selectedPoolMeta.baseDecimals : 6;
+  const sellTokenAddress = isTokenReversed ? apollosAddresses.usdc : selectedPoolMeta.tokenAddress;
+
+  const sellAmountRaw = useMemo(() => {
+    if (!sellAmountInput.trim()) {
+      return BigInt(0);
+    }
+
+    try {
+      return parseUnits(sellAmountInput, sellDecimals);
+    } catch {
+      return BigInt(0);
+    }
+  }, [sellAmountInput, sellDecimals]);
+
+  const zeroForOne = sellTokenAddress.toLowerCase() === selectedPoolKey.currency0.toLowerCase();
+
+  const { data: swapReads } = useReadContracts({
+    contracts: [
+      {
+        address: sellTokenAddress,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [address ?? "0x0000000000000000000000000000000000000000"],
+        chainId: arbitrumSepolia.id,
+      },
+      {
+        address: sellTokenAddress,
+        abi: erc20Abi,
+        functionName: "allowance",
+        args: [
+          address ?? "0x0000000000000000000000000000000000000000",
+          apollosAddresses.uniswapPool,
+        ],
+        chainId: arbitrumSepolia.id,
+      },
+      {
+        address: apollosAddresses.uniswapPool,
+        abi: uniswapAbi,
+        functionName: "getSwapQuote",
+        args: [selectedPoolKey, zeroForOne, sellAmountRaw],
+        chainId: arbitrumSepolia.id,
+      },
+    ],
+    allowFailure: true,
+    query: {
+      enabled: Boolean(selectedPoolMeta && address),
+      refetchInterval: 5000,
+    },
+  });
+
+  const sellBalanceRaw = (swapReads?.[0]?.result as bigint | undefined) ?? BigInt(0);
+  const allowanceRaw = (swapReads?.[1]?.result as bigint | undefined) ?? BigInt(0);
+  const quoteResult = (swapReads?.[2]?.result as readonly [bigint, bigint] | undefined) ?? [BigInt(0), BigInt(0)];
+  const quoteOutRaw = quoteResult[0];
 
   const parsedSellAmount = Number.parseFloat(sellAmountInput);
   const sellAmount = Number.isFinite(parsedSellAmount) && parsedSellAmount > 0 ? parsedSellAmount : 0;
-  const buyAmount = sellAmount * conversionRate;
-  const sellUsdValue = isTokenReversed ? sellAmount : sellAmount * selectedPool.priceBase;
-  const buyUsdValue = isTokenReversed ? buyAmount * selectedPool.priceBase : buyAmount;
-  const canSwap = sellAmount > 0;
-  const reserve0Amount = parseCompactAmount(selectedPool.reserve0);
-  const reserve1Amount = parseCompactAmount(selectedPool.reserve1);
-  const reserve0UsdValue = reserve0Amount * selectedPool.priceBase;
-  const reserve1UsdValue = reserve1Amount;
-  const totalReserveUsd = reserve0UsdValue + reserve1UsdValue;
-  const reserve0ShareRaw = totalReserveUsd > 0 ? (reserve0UsdValue / totalReserveUsd) * 100 : 50;
+  const quotedBuyAmount = Number(formatUnits(quoteOutRaw, buyDecimals));
+  const buyAmount = quoteOutRaw > BigInt(0) ? quotedBuyAmount : sellAmount * conversionRate;
+  const sellUsdValue = isTokenReversed ? sellAmount : sellAmount * dynamicPrice;
+  const buyUsdValue = isTokenReversed ? buyAmount * dynamicPrice : buyAmount;
+
+  const needsApproval = sellAmountRaw > BigInt(0) && allowanceRaw < sellAmountRaw;
+  const hasEnoughBalance = sellAmountRaw <= sellBalanceRaw;
+  const canSwap = sellAmountRaw > BigInt(0) && hasEnoughBalance;
+  const actionEnabled = isConnected && !isBusy && (isOnArbitrum ? canSwap : sellAmountRaw > BigInt(0));
+  const swapButtonLabel = !isConnected
+    ? "Connect Wallet"
+    : !isOnArbitrum
+      ? "Switch to Arbitrum"
+      : !hasEnoughBalance && sellAmountRaw > BigInt(0)
+        ? "Insufficient balance"
+        : needsApproval
+          ? `Approve ${sellToken}`
+          : isBusy
+            ? "Processing..."
+            : canSwap
+              ? `Swap ${sellToken} to ${buyToken}`
+              : "Enter an amount";
+
+  const handleSwap = async () => {
+    if (!isConnected || isBusy || sellAmountRaw === BigInt(0)) {
+      return;
+    }
+
+    try {
+      if (!isOnArbitrum) {
+        await switchChainAsync({ chainId: arbitrumSepolia.id });
+        return;
+      }
+
+      if (needsApproval) {
+        await writeContractAsync({
+          address: sellTokenAddress,
+          abi: erc20Abi,
+          functionName: "approve",
+          args: [apollosAddresses.uniswapPool, sellAmountRaw],
+          chainId: arbitrumSepolia.id,
+        });
+        return;
+      }
+
+      await writeContractAsync({
+        address: apollosAddresses.uniswapPool,
+        abi: uniswapAbi,
+        functionName: "swap",
+        args: [selectedPoolKey, zeroForOne, BigInt(0) - sellAmountRaw, BigInt(0)],
+        chainId: arbitrumSepolia.id,
+      });
+    } catch {
+      // noop
+    }
+  };
+
+  const totalReserveUsd = reserve0Amount * dynamicPrice + reserve1Amount;
+  const reserve0ShareRaw = totalReserveUsd > 0 ? (reserve0Amount * dynamicPrice / totalReserveUsd) * 100 : 50;
   const reserve0Share = Number.isFinite(reserve0ShareRaw) ? reserve0ShareRaw : 50;
   const reserve1Share = 100 - reserve0Share;
   const reserve0BarWidth = Math.min(98, Math.max(2, reserve0Share));
   const reserve1BarWidth = 100 - reserve0BarWidth;
   const reserve0Color =
     pairToken0 === "WETH" ? "#111827" : pairToken0 === "WBTC" ? "#f7931a" : "#4f66ff";
+  const reserve0Label = `${formatTokenAmount(reserve0Amount)} ${pairToken0}`;
+  const reserve1Label = `${formatTokenAmount(reserve1Amount)} ${pairToken1}`;
+  const dynamicTvlValue = formatCompactCurrency(totalReserveUsd);
+  const dynamicVol24Value = formatCompactCurrency(Math.max(totalReserveUsd * 0.12, 0));
+  const dynamicFees24Value = formatCompactCurrency(Math.max(totalReserveUsd * 0.12 * 0.003, 0));
 
   return (
     <div className="mt-8 space-y-4 text-neutral-950">
@@ -645,14 +840,17 @@ export function DexPoolsSection() {
 
             <button
               type="button"
-              disabled={!canSwap}
+              onClick={() => {
+                void handleSwap();
+              }}
+              disabled={!actionEnabled}
               className={`mt-4 w-full rounded-2xl px-4 py-3 font-syne text-base font-bold transition-opacity ${
-                canSwap
+                actionEnabled
                   ? "bg-gradient-to-r from-fuchsia-600 to-pink-500 text-white hover:opacity-90"
                   : "bg-black/10 text-neutral-500"
               }`}
             >
-              {canSwap ? `Swap ${sellToken} to ${buyToken}` : "Enter an amount"}
+              {swapButtonLabel}
             </button>
           </div>
         </article>
@@ -678,8 +876,8 @@ export function DexPoolsSection() {
               <div>
                 <p className="font-manrope text-sm text-neutral-600">Pool balances</p>
                 <div className="mt-2 flex items-center justify-between gap-3">
-                  <p className="font-syne text-xl font-bold text-neutral-950">{selectedPool.reserve0}</p>
-                  <p className="font-syne text-xl font-bold text-neutral-950">{selectedPool.reserve1}</p>
+                  <p className="font-syne text-xl font-bold text-neutral-950">{reserve0Label}</p>
+                  <p className="font-syne text-xl font-bold text-neutral-950">{reserve1Label}</p>
                 </div>
                 <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-black/10">
                   <div className="flex h-full w-full">
@@ -700,19 +898,19 @@ export function DexPoolsSection() {
 
               <div>
                 <p className="font-manrope text-sm text-neutral-600">TVL</p>
-                <p className="mt-1 font-syne text-3xl font-bold text-neutral-950">{selectedPool.tvlValue}</p>
+                <p className="mt-1 font-syne text-3xl font-bold text-neutral-950">{dynamicTvlValue}</p>
                 <p className="font-manrope text-sm text-emerald-500">+ {selectedPool.tvlChange}</p>
               </div>
 
               <div>
                 <p className="font-manrope text-sm text-neutral-600">24H volume</p>
-                <p className="mt-1 font-syne text-3xl font-bold text-neutral-950">{selectedPool.vol24hValue}</p>
+                <p className="mt-1 font-syne text-3xl font-bold text-neutral-950">{dynamicVol24Value}</p>
                 <p className="font-manrope text-sm text-emerald-500">+ {selectedPool.vol24hChange}</p>
               </div>
 
               <div>
                 <p className="font-manrope text-sm text-neutral-600">24H fees</p>
-                <p className="mt-1 font-syne text-3xl font-bold text-neutral-950">{selectedPool.fees24hValue}</p>
+                <p className="mt-1 font-syne text-3xl font-bold text-neutral-950">{dynamicFees24Value}</p>
                 <p className="font-manrope text-sm text-emerald-500">+ {selectedPool.fees24hChange}</p>
               </div>
             </div>
@@ -722,6 +920,11 @@ export function DexPoolsSection() {
     </div>
   );
 }
+
+
+
+
+
 
 
 

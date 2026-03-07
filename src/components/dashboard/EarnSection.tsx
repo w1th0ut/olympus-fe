@@ -1,42 +1,96 @@
 "use client";
 
-const earnStats = [
-  { label: "Total TVL", value: "$4,203,129" },
-  { label: "Highest market yield", value: "36.30%" },
-  { label: "Active markets", value: "3" },
-];
+import { useMemo } from "react";
+import { formatUnits } from "viem";
+import { useReadContracts } from "wagmi";
+import { aaveAbi, vaultAbi } from "@/lib/apollos-abi";
+import { apollosAddresses, vaultMarkets } from "@/lib/apollos";
 
-const earnMarkets = [
-  {
-    symbol: "WETH",
-    icon: "/icons/Logo-WETH.png",
-    apy: "27.12%",
-    tvlPrimary: "8.42k WETH",
-    tvlSecondary: "$17.67M",
-    capacity: "100% (FILLED)",
-    capacityValue: 100,
-  },
-  {
-    symbol: "WBTC",
-    icon: "/icons/Logo-WBTC.png",
-    apy: "36.30%",
-    tvlPrimary: "512.65 WBTC",
-    tvlSecondary: "$3.67M",
-    capacity: "100% (FILLED)",
-    capacityValue: 100,
-  },
-  {
-    symbol: "LINK",
-    icon: "/icons/Logo-LINK.png",
-    apy: "27.12%",
-    tvlPrimary: "1.12m LINK",
-    tvlSecondary: "$10.04M",
-    capacity: "92.25%",
-    capacityValue: 92.25,
-  },
-];
+const marketVisuals: Record<string, { apy: string; capacity: string; capacityValue: number }> = {
+  WETH: { apy: "27.12%", capacity: "100% (FILLED)", capacityValue: 100 },
+  WBTC: { apy: "36.30%", capacity: "100% (FILLED)", capacityValue: 100 },
+  LINK: { apy: "27.12%", capacity: "92.25%", capacityValue: 92.25 },
+};
+
+function formatUsd(value: number, maximumFractionDigits = 2) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits,
+  }).format(value);
+}
+
+function formatCompactToken(value: number, symbol: string) {
+  const compact = new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 2,
+  }).format(value);
+
+  return `${compact} ${symbol}`;
+}
 
 export function EarnSection() {
+  const contracts = vaultMarkets.flatMap((market) => [
+    {
+      address: market.vaultAddress,
+      abi: vaultAbi,
+      functionName: "totalAssets" as const,
+    },
+    {
+      address: apollosAddresses.aavePool,
+      abi: aaveAbi,
+      functionName: "assetPrices" as const,
+      args: [market.tokenAddress],
+    },
+  ]);
+
+  const { data, isLoading } = useReadContracts({
+    contracts,
+    allowFailure: true,
+    query: {
+      refetchInterval: 15000,
+    },
+  });
+
+  const earnMarkets = useMemo(() => {
+    return vaultMarkets.map((market, index) => {
+      const offset = index * 2;
+      const totalAssets = (data?.[offset]?.result as bigint | undefined) ?? BigInt(0);
+      const rawPrice = (data?.[offset + 1]?.result as bigint | undefined) ?? BigInt(0);
+
+      const assetAmount = Number(formatUnits(totalAssets, market.decimals));
+      const usdPrice = Number(formatUnits(rawPrice, 8));
+      const usdValue = assetAmount * usdPrice;
+
+      const visual = marketVisuals[market.symbol];
+
+      return {
+        symbol: market.symbol,
+        icon: market.icon,
+        apy: visual.apy,
+        tvlPrimary: formatCompactToken(assetAmount, market.symbol),
+        tvlSecondary: formatUsd(usdValue, 0),
+        capacity: visual.capacity,
+        capacityValue: visual.capacityValue,
+        usdValue,
+      };
+    });
+  }, [data]);
+
+  const earnStats = useMemo(() => {
+    const totalTvl = earnMarkets.reduce((sum, market) => sum + market.usdValue, 0);
+    const highestYield = earnMarkets.reduce((max, market) => {
+      const parsed = Number.parseFloat(market.apy.replace("%", ""));
+      return Number.isFinite(parsed) ? Math.max(max, parsed) : max;
+    }, 0);
+
+    return [
+      { label: "Total TVL", value: isLoading ? "Loading..." : formatUsd(totalTvl, 0) },
+      { label: "Highest market yield", value: `${highestYield.toFixed(2)}%` },
+      { label: "Active markets", value: String(earnMarkets.length) },
+    ];
+  }, [earnMarkets, isLoading]);
+
   return (
     <div className="mt-8 space-y-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -96,4 +150,3 @@ export function EarnSection() {
     </div>
   );
 }
-

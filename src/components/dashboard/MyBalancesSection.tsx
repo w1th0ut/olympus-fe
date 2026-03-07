@@ -1,35 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-
-const wealthSummary = {
-  portfolioValue: "$15,420.50",
-  lifetimeEarnings: "$120.21",
-  averageApy: "12.5%",
-  averageHealth: "2.15",
-};
-
-const activeVaultPositions = [
-  {
-    symbol: "afWETH",
-    icon: "/icons/Logo-afWETH.png",
-    balance: "1.12",
-    value: "$12,212.18",
-  },
-  {
-    symbol: "afWBTC",
-    icon: "/icons/Logo-afWBTC.png",
-    balance: "0.19",
-    value: "$6,123.91",
-  },
-  {
-    symbol: "afLINK",
-    icon: "/icons/Logo-afLINK.png",
-    balance: "102.12",
-    value: "$1,001.12",
-  },
-] as const;
+import { useMemo, useState } from "react";
+import { formatUnits } from "viem";
+import { useAccount, useReadContracts } from "wagmi";
+import { aaveAbi, vaultAbi } from "@/lib/apollos-abi";
+import { apollosAddresses, vaultMarkets } from "@/lib/apollos";
 
 const recentActivities = [
   {
@@ -74,14 +50,116 @@ const recentActivities = [
   },
 ] as const;
 
+function formatCurrency(value: number, maximumFractionDigits = 2) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits,
+  }).format(value);
+}
+
+function formatNumber(value: number, maximumFractionDigits = 4) {
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits,
+  }).format(value);
+}
+
+const MAX_ONCHAIN_HEALTH_SENTINEL = BigInt("1000000000000000000000000000000000000");
+
 export function MyBalancesSection() {
+  const { address, isConnected } = useAccount();
   const activitiesPerPage = 2;
   const [activityPage, setActivityPage] = useState(1);
+
   const totalActivityPages = Math.max(1, Math.ceil(recentActivities.length / activitiesPerPage));
   const paginatedActivities = recentActivities.slice(
     (activityPage - 1) * activitiesPerPage,
     activityPage * activitiesPerPage,
   );
+
+  const contracts = vaultMarkets.flatMap((market) => [
+    {
+      address: market.vaultAddress,
+      abi: vaultAbi,
+      functionName: "balanceOf" as const,
+      args: [address ?? "0x0000000000000000000000000000000000000000"],
+    },
+    {
+      address: market.vaultAddress,
+      abi: vaultAbi,
+      functionName: "getSharePrice" as const,
+    },
+    {
+      address: apollosAddresses.aavePool,
+      abi: aaveAbi,
+      functionName: "assetPrices" as const,
+      args: [market.tokenAddress],
+    },
+    {
+      address: market.vaultAddress,
+      abi: vaultAbi,
+      functionName: "getHealthFactor" as const,
+    },
+  ]);
+
+  const { data } = useReadContracts({
+    contracts,
+    allowFailure: true,
+    query: {
+      enabled: Boolean(address),
+      refetchInterval: 15000,
+    },
+  });
+
+  const activeVaultPositions = useMemo(() => {
+    return vaultMarkets.map((market, index) => {
+      const offset = index * 4;
+      const sharesRaw = (data?.[offset]?.result as bigint | undefined) ?? BigInt(0);
+      const sharePriceRaw = (data?.[offset + 1]?.result as bigint | undefined) ?? BigInt(0);
+      const priceRaw = (data?.[offset + 2]?.result as bigint | undefined) ?? BigInt(0);
+      const healthRaw = (data?.[offset + 3]?.result as bigint | undefined) ?? BigInt(0);
+
+      const shares = Number(formatUnits(sharesRaw, 18));
+      const baseAmountRaw = (sharesRaw * sharePriceRaw) / (BigInt(10) ** BigInt(18));
+      const baseAmount = Number(formatUnits(baseAmountRaw, market.decimals));
+      const usdPrice = Number(formatUnits(priceRaw, 8));
+      const valueUsd = baseAmount * usdPrice;
+      const isUnlimitedHealth = healthRaw >= MAX_ONCHAIN_HEALTH_SENTINEL;
+      const health =
+        isUnlimitedHealth || healthRaw === BigInt(0)
+          ? null
+          : Number(formatUnits(healthRaw, 18));
+
+      return {
+        symbol: market.key,
+        icon: market.afIcon,
+        balanceDisplay: formatNumber(shares, 4),
+        valueDisplay: formatCurrency(valueUsd, 2),
+        valueUsd,
+        health,
+        isUnlimitedHealth,
+      };
+    });
+  }, [data]);
+
+  const portfolioValue = activeVaultPositions.reduce((sum, position) => sum + position.valueUsd, 0);
+  const hasUnlimitedHealth = activeVaultPositions.some((position) => position.isUnlimitedHealth);
+  const avgHealth = (() => {
+    const valid = activeVaultPositions.filter(
+      (position): position is typeof position & { health: number } =>
+        typeof position.health === "number" && position.health > 0 && Number.isFinite(position.health),
+    );
+    if (valid.length === 0) return 0;
+    const sum = valid.reduce((acc, current) => acc + current.health, 0);
+    return sum / valid.length;
+  })();
+
+  const wealthSummary = {
+    portfolioValue: isConnected ? formatCurrency(portfolioValue, 2) : "$0.00",
+    lifetimeEarnings: "$0.00",
+    averageApy: "12.5%",
+    averageHealth: !isConnected ? "-" : hasUnlimitedHealth ? "\u221E" : avgHealth > 0 ? avgHealth.toFixed(2) : "-",
+  };
 
   return (
     <div className="mt-8 space-y-7">
@@ -163,8 +241,8 @@ export function MyBalancesSection() {
                         />
                         <span className="font-syne text-lg font-bold text-neutral-950">{position.symbol}</span>
                       </div>
-                      <span className="font-syne text-lg font-bold text-neutral-950">{position.balance}</span>
-                      <span className="font-syne text-lg font-bold text-neutral-950">{position.value}</span>
+                      <span className="font-syne text-lg font-bold text-neutral-950">{position.balanceDisplay}</span>
+                      <span className="font-syne text-lg font-bold text-neutral-950">{position.valueDisplay}</span>
                       <div className="flex justify-end">
                         <Link
                           href="/dashboard?tab=earn"
@@ -262,3 +340,5 @@ export function MyBalancesSection() {
     </div>
   );
 }
+
+

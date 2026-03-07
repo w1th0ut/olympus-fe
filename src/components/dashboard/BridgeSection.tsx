@@ -2,7 +2,19 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { formatUnits, parseUnits } from "viem";
 import { ArrowRight, CheckCircle2, Clock3 } from "lucide-react";
+import {
+  useAccount,
+  useChainId,
+  useReadContracts,
+  useSwitchChain,
+  useWaitForTransactionReceipt,
+  useWriteContract,
+} from "wagmi";
+import { aaveAbi, erc20Abi, sourceRouterAbi } from "@/lib/apollos-abi";
+import { apollosAddresses, ccipSelectors, vaultMarkets } from "@/lib/apollos";
+import { baseSepolia } from "wagmi/chains";
 
 type VaultKey = "afWETH" | "afWBTC" | "afLINK";
 
@@ -20,6 +32,7 @@ const vaultTargets: {
   expectedApy: string;
   estimatePriceUsd: number;
   icon: string;
+  targetBaseAsset: `0x${string}`;
 }[] = [
   {
     key: "afWETH",
@@ -27,6 +40,7 @@ const vaultTargets: {
     expectedApy: "27.12%",
     estimatePriceUsd: 2660,
     icon: "/icons/Logo-afWETH.png",
+    targetBaseAsset: apollosAddresses.weth,
   },
   {
     key: "afWBTC",
@@ -34,6 +48,7 @@ const vaultTargets: {
     expectedApy: "36.30%",
     estimatePriceUsd: 67414,
     icon: "/icons/Logo-afWBTC.png",
+    targetBaseAsset: apollosAddresses.wbtc,
   },
   {
     key: "afLINK",
@@ -41,6 +56,7 @@ const vaultTargets: {
     expectedApy: "27.12%",
     estimatePriceUsd: 23.4,
     icon: "/icons/Logo-afLINK.png",
+    targetBaseAsset: apollosAddresses.link,
   },
 ];
 
@@ -70,6 +86,10 @@ function formatToken(value: number) {
 }
 
 export function BridgeSection() {
+  const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const { switchChainAsync, isPending: isSwitchPending } = useSwitchChain();
+
   const [targetVault, setTargetVault] = useState<VaultKey>("afWETH");
   const [amountInput, setAmountInput] = useState("");
   const [isRouting, setIsRouting] = useState(false);
@@ -79,21 +99,100 @@ export function BridgeSection() {
 
   const amount = Number.parseFloat(amountInput);
   const parsedAmount = Number.isFinite(amount) && amount > 0 ? amount : 0;
-
-  const bridgeFee = useMemo(() => {
-    if (parsedAmount <= 0) {
-      return 0;
+  const amountRaw = useMemo(() => {
+    if (parsedAmount <= 0) return BigInt(0);
+    try {
+      return parseUnits(parsedAmount.toString(), 6);
+    } catch {
+      return BigInt(0);
     }
-
-    const dynamicFee = parsedAmount * 0.0025;
-    const laneFee = 0.9;
-    return dynamicFee + laneFee;
   }, [parsedAmount]);
 
-  const destinationAmount = Math.max(parsedAmount - bridgeFee, 0);
+  const { data: bridgeReads } = useReadContracts({
+    contracts: [
+      {
+        address: apollosAddresses.sourceRouter,
+        abi: sourceRouterAbi,
+        functionName: "supportedChains",
+        args: [ccipSelectors.arbitrumSepolia],
+        chainId: baseSepolia.id,
+      },
+      {
+        address: apollosAddresses.sourceRouter,
+        abi: sourceRouterAbi,
+        functionName: "supportedAssets",
+        args: [apollosAddresses.baseUsdc],
+        chainId: baseSepolia.id,
+      },
+      {
+        address: apollosAddresses.baseUsdc,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [address ?? "0x0000000000000000000000000000000000000000"],
+        chainId: baseSepolia.id,
+      },
+      {
+        address: apollosAddresses.baseUsdc,
+        abi: erc20Abi,
+        functionName: "allowance",
+        args: [address ?? "0x0000000000000000000000000000000000000000", apollosAddresses.sourceRouter],
+        chainId: baseSepolia.id,
+      },
+      {
+        address: apollosAddresses.sourceRouter,
+        abi: sourceRouterAbi,
+        functionName: "getBridgeFee",
+        args: [
+          ccipSelectors.arbitrumSepolia,
+          apollosAddresses.baseUsdc,
+          amountRaw,
+          BigInt(0),
+          selectedVault.targetBaseAsset,
+        ],
+        chainId: baseSepolia.id,
+      },
+      {
+        address: apollosAddresses.aavePool,
+        abi: aaveAbi,
+        functionName: "assetPrices",
+        args: [apollosAddresses.weth],
+      },
+    ],
+    allowFailure: true,
+    query: {
+      enabled: Boolean(address),
+      refetchInterval: 12000,
+    },
+  });
+
+  const chainSupported = (bridgeReads?.[0]?.result as boolean | undefined) ?? false;
+  const assetSupported = (bridgeReads?.[1]?.result as boolean | undefined) ?? false;
+  const baseUsdcBalanceRaw = (bridgeReads?.[2]?.result as bigint | undefined) ?? BigInt(0);
+  const allowanceRaw = (bridgeReads?.[3]?.result as bigint | undefined) ?? BigInt(0);
+  const bridgeFeeRaw = (bridgeReads?.[4]?.result as bigint | undefined) ?? BigInt(0);
+  const wethPriceRaw = (bridgeReads?.[5]?.result as bigint | undefined) ?? BigInt(0);
+
+  const bridgeFeeEth = Number(formatUnits(bridgeFeeRaw, 18));
+  const wethPriceUsd = Number(formatUnits(wethPriceRaw, 8));
+  const bridgeFee = bridgeFeeEth * (Number.isFinite(wethPriceUsd) && wethPriceUsd > 0 ? wethPriceUsd : 2600);
+
+  const destinationAmount = parsedAmount;
   const estimatedAfTokens = destinationAmount / selectedVault.estimatePriceUsd;
 
-  const canRoute = parsedAmount > 0 && !isRouting;
+  const needsApproval = amountRaw > BigInt(0) && allowanceRaw < amountRaw;
+  const baseUsdcBalance = Number(formatUnits(baseUsdcBalanceRaw, 6));
+
+  const isOnBase = chainId === baseSepolia.id;
+  const canRoute =
+    parsedAmount > 0 &&
+    parsedAmount <= baseUsdcBalance &&
+    chainSupported &&
+    assetSupported;
+
+  const { writeContractAsync, data: txHash, isPending: isWritePending } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+
+  const isBusy = isRouting || isSwitchPending || isWritePending || isConfirming;
   const isCompleted = activeStep >= processSteps.length;
 
   useEffect(() => {
@@ -116,14 +215,68 @@ export function BridgeSection() {
     return () => window.clearTimeout(timer);
   }, [activeStep, isRouting]);
 
-  const handleRoute = () => {
-    if (!canRoute) {
+  useEffect(() => {
+    if (isSuccess && txHash) {
+      setActiveStep(processSteps.length);
+      setIsRouting(true);
+    }
+  }, [isSuccess, txHash]);
+
+  const handleRoute = async () => {
+    if (!isConnected || !address || !canRoute || isBusy) {
       return;
     }
 
-    setActiveStep(0);
-    setIsRouting(true);
+    try {
+      if (!isOnBase) {
+        await switchChainAsync({ chainId: baseSepolia.id });
+        return;
+      }
+
+      if (needsApproval) {
+        await writeContractAsync({
+          address: apollosAddresses.baseUsdc,
+          abi: erc20Abi,
+          functionName: "approve",
+          args: [apollosAddresses.sourceRouter, amountRaw],
+          chainId: baseSepolia.id,
+        });
+        return;
+      }
+
+      setActiveStep(0);
+      setIsRouting(true);
+
+      await writeContractAsync({
+        address: apollosAddresses.sourceRouter,
+        abi: sourceRouterAbi,
+        functionName: "bridgeToArbitrum",
+        args: [
+          apollosAddresses.baseUsdc,
+          amountRaw,
+          ccipSelectors.arbitrumSepolia,
+          address,
+          BigInt(0),
+          selectedVault.targetBaseAsset,
+        ],
+        value: bridgeFeeRaw,
+        chainId: baseSepolia.id,
+      });
+    } catch {
+      setIsRouting(false);
+      setActiveStep(-1);
+    }
   };
+
+  const buttonLabel = !isConnected
+    ? "Connect Wallet"
+    : !isOnBase
+      ? "Switch to Base"
+      : needsApproval
+        ? "Approve USDC"
+        : isBusy
+          ? "Routing via CCIP..."
+          : "Bridge USDC and Zap to Earn";
 
   return (
     <div className="mt-8">
@@ -163,6 +316,7 @@ export function BridgeSection() {
                   </span>
                 </div>
               </div>
+              <p className="mt-2 font-manrope text-xs text-neutral-500">Wallet balance: {formatToken(baseUsdcBalance)} USDC</p>
             </div>
 
             <div>
@@ -217,16 +371,22 @@ export function BridgeSection() {
 
           <button
             type="button"
-            onClick={handleRoute}
-            disabled={!canRoute}
+            onClick={() => {
+              void handleRoute();
+            }}
+            disabled={!canRoute || isBusy || !isConnected}
             className={`mt-5 inline-flex w-full items-center justify-center gap-2 rounded-md px-4 py-2 font-syne text-base font-bold shadow-[0px_6px_10px_0px_rgba(0,0,0,0.20)] transition-colors ${
-              canRoute
+              canRoute && !isBusy && isConnected
                 ? "bg-neutral-800 text-white hover:bg-neutral-700"
                 : "bg-black/10 text-neutral-500 shadow-none"
             }`}
           >
-            {isRouting ? "Routing via CCIP..." : "Bridge USDC and Zap to Earn"}
+            {buttonLabel}
           </button>
+          {!chainSupported || !assetSupported ? (
+            <p className="mt-2 font-manrope text-xs text-red-600">Source router belum support lane/asset ini.</p>
+          ) : null}
+          {txHash ? <p className="mt-2 break-all font-manrope text-xs text-neutral-500">Tx: {txHash}</p> : null}
         </article>
 
         <div className="space-y-4">
