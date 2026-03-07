@@ -5,11 +5,11 @@ import {
   useAccount,
   useBalance,
   useChainId,
-  useConnect,
   useConnections,
   useDisconnect,
   useSwitchChain,
 } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { targetChain } from "@/lib/wagmi";
 
 interface DashboardHeaderProps {
@@ -26,23 +26,15 @@ function formatAddress(address?: string) {
 }
 
 export function DashboardHeader({ title, description }: DashboardHeaderProps) {
-  const [hasInjectedProvider, setHasInjectedProvider] = useState<boolean | null>(null);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
   const walletMenuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    setHasInjectedProvider(Boolean((window as Window & { ethereum?: unknown }).ethereum));
-  }, []);
 
   const { address, isConnected } = useAccount();
   const connections = useConnections();
   const chainId = useChainId();
   const isOnTargetChain = chainId === targetChain.id;
+  const { openConnectModal } = useConnectModal();
   const { data: nativeBalance, isLoading: isBalanceLoading } = useBalance({
     address,
     chainId: targetChain.id,
@@ -52,20 +44,14 @@ export function DashboardHeader({ title, description }: DashboardHeaderProps) {
     },
   });
 
-  const { connectAsync, connectors, error: connectError, isPending: isConnectPending } = useConnect();
   const { disconnectAsync, error: disconnectError, isPending: isDisconnectPending } = useDisconnect();
   const { switchChain, error: switchError, isPending: isSwitchPending } = useSwitchChain();
 
-  const injectedConnector = connectors.find((connector) => connector.type === "injected") ?? connectors[0];
-  const walletError = connectError ?? switchError ?? disconnectError;
+  const walletError = switchError ?? disconnectError;
 
-  const isPrimaryPending = isConnectPending || isSwitchPending;
+  const isPrimaryPending = isSwitchPending;
   const explorerBaseUrl = targetChain.blockExplorers?.default.url;
-  const primaryLabel = !isConnected
-    ? hasInjectedProvider === false
-      ? "Install Wallet"
-      : "Connect Wallet"
-    : formatAddress(address);
+  const primaryLabel = !isConnected ? "Connect Wallet" : formatAddress(address);
 
   const clearConnections = async () => {
     if (connections.length === 0) {
@@ -101,32 +87,7 @@ export function DashboardHeader({ title, description }: DashboardHeaderProps) {
 
   const handlePrimaryAction = () => {
     if (!isConnected) {
-      if (hasInjectedProvider === false) {
-        window.open("https://metamask.io/download/", "_blank", "noopener,noreferrer");
-        return;
-      }
-
-      if (!injectedConnector || isDisconnectPending) {
-        return;
-      }
-
-      void (async () => {
-        try {
-          await connectAsync({ connector: injectedConnector });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          if (!message.includes("Connector already connected")) {
-            return;
-          }
-
-          await clearConnections();
-          try {
-            await connectAsync({ connector: injectedConnector });
-          } catch {
-            // mutation error state is handled by wagmi hook
-          }
-        }
-      })();
+      openConnectModal?.();
       return;
     }
 
@@ -155,11 +116,7 @@ export function DashboardHeader({ title, description }: DashboardHeaderProps) {
           <button
             type="button"
             onClick={handlePrimaryAction}
-            disabled={
-              isPrimaryPending ||
-              isDisconnectPending ||
-              (!isConnected && hasInjectedProvider !== false && !injectedConnector)
-            }
+            disabled={isPrimaryPending || isDisconnectPending || (!isConnected && !openConnectModal)}
             className="inline-flex items-center gap-3 self-start rounded-[16px] border border-neutral-950 bg-white px-5 py-2 shadow-[0px_10px_10px_0px_rgba(0,0,0,0.25)] disabled:cursor-not-allowed disabled:opacity-70"
           >
             <img src="/icons/Logo-Wallet.png" alt="" className="h-5 w-5 object-contain" />
@@ -238,11 +195,6 @@ export function DashboardHeader({ title, description }: DashboardHeaderProps) {
         </div>
 
         {walletError ? <p className="font-manrope text-xs text-red-600">{walletError.message}</p> : null}
-        {!isConnected && hasInjectedProvider === false ? (
-          <p className="font-manrope text-xs text-amber-600">
-            Wallet extension not found. Please install a Web3 wallet like MetaMask to continue.
-          </p>
-        ) : null}
       </div>
     </div>
   );
