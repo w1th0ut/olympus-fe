@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/components/landing/animations";
 
 const footerNavLinks = [
-  { label: "Security", href: "/security" },
+  { label: "Security", href: "https://skynet.certik.com/projects/apollos-finance" },
   { label: "Documentation", href: "/docs" },
   { label: "Transparency", href: "/transparency" },
   { label: "Governance", href: "/governance" },

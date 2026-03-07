@@ -1,0 +1,24 @@
+---
+title: FAQ
+description: Frequently asked questions about docs usage and dashboard behavior.
+---
+
+# FAQ
+
+## Why create docs as separate MDX files?
+
+It keeps content modular and easier to maintain by topic.
+
+## How do I add a new page?
+
+1. Create a new `.mdx` file inside `content/docs`.
+2. Add the page slug to `content/docs/meta.json`.
+3. Restart dev server if needed.
+
+## Can this layout be made closer to GitBook style?
+
+Yes. Sidebar groups, typography scale, and color tokens can be tuned further without changing the content model.
+
+## Is search already available?
+
+Yes. Search endpoint is exposed at `/api/search` and wired into the docs layout.

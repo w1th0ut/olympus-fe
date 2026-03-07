@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/components/landing/animations";
 
 const topNavItems = [
-  { label: "Security", href: "/security" },
+  { label: "Security", href: "https://skynet.certik.com/projects/apollos-finance" },
   { label: "Docs", href: "/docs" },
   { label: "Transparency", href: "/transparency" },
   { label: "Governance", href: "/governance" },
@@ -171,6 +171,8 @@ export function HeaderSection() {
             <motion.a
               key={item.label}
               href={item.href}
+              target={item.href.startsWith("http") ? "_blank" : undefined}
+              rel={item.href.startsWith("http") ? "noreferrer" : undefined}
               className="font-manrope font-bold text-neutral-950 text-lg xl:text-xl relative pb-2"
               variants={staggerItem}
               initial="rest"
