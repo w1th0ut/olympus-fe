@@ -274,6 +274,7 @@ export function DexPoolsSection() {
   const isBusy = isSwitchPending || isWritePending || isConfirming;
 
   const selectedPool = pools.find((pool) => pool.id === selectedPoolId) ?? null;
+  const activePool = selectedPool ?? pools[0];
 
   useEffect(() => {
     setIsTokenReversed(false);
@@ -350,8 +351,7 @@ export function DexPoolsSection() {
     return { width, height, points, linePath, areaPath };
   }, [chartMax, chartMin, chartSeries, metricMode]);
 
-  if (!selectedPool) {
-    return (
+  const listView = !selectedPool ? (
       <div className="mt-8 rounded-3xl border border-black/15 bg-white p-4 text-neutral-950 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)] sm:p-6">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[980px] border-collapse">
@@ -400,16 +400,16 @@ export function DexPoolsSection() {
           </table>
         </div>
       </div>
-    );
-  }
+    )
+    : null;
 
-  const [pairToken0, pairToken1] = selectedPool.pair.split(/\s*\/\s*/);
+  const [pairToken0, pairToken1] = activePool.pair.split(/\s*\/\s*/);
   const sellToken = isTokenReversed ? pairToken1 : pairToken0;
   const buyToken = isTokenReversed ? pairToken0 : pairToken1;
-  const sellIcon = isTokenReversed ? selectedPool.icon1 : selectedPool.icon0;
-  const buyIcon = isTokenReversed ? selectedPool.icon0 : selectedPool.icon1;
+  const sellIcon = isTokenReversed ? activePool.icon1 : activePool.icon0;
+  const buyIcon = isTokenReversed ? activePool.icon0 : activePool.icon1;
 
-  const selectedPoolMeta = poolMeta[selectedPool.id] ?? poolMeta["weth-usdc"];
+  const selectedPoolMeta = poolMeta[activePool.id] ?? poolMeta["weth-usdc"];
   const selectedPoolKey = toPoolKey(selectedPoolMeta.tokenAddress, apollosAddresses.usdc);
 
   const { data: selectedPoolReads } = useReadContracts({
@@ -431,7 +431,7 @@ export function DexPoolsSection() {
     ],
     allowFailure: true,
     query: {
-      enabled: Boolean(selectedPoolMeta),
+      enabled: Boolean(selectedPool),
       refetchInterval: 10000,
     },
   });
@@ -456,21 +456,22 @@ export function DexPoolsSection() {
 
   const reserve0Amount = reserve0AmountOnchain > 0
     ? reserve0AmountOnchain
-    : parseCompactAmount(selectedPool.reserve0);
+    : parseCompactAmount(activePool.reserve0);
   const reserve1Amount = reserve1AmountOnchain > 0
     ? reserve1AmountOnchain
-    : parseCompactAmount(selectedPool.reserve1);
+    : parseCompactAmount(activePool.reserve1);
 
   const dynamicPrice = reserve0Amount > 0
     ? reserve1Amount / reserve0Amount
     : oraclePrice > 0
       ? oraclePrice
-      : selectedPool.priceBase;
+      : activePool.priceBase;
   const conversionRate = isTokenReversed ? 1 / dynamicPrice : dynamicPrice;
 
   const sellDecimals = isTokenReversed ? 6 : selectedPoolMeta.baseDecimals;
   const buyDecimals = isTokenReversed ? selectedPoolMeta.baseDecimals : 6;
   const sellTokenAddress = isTokenReversed ? apollosAddresses.usdc : selectedPoolMeta.tokenAddress;
+  const buyTokenAddress = isTokenReversed ? selectedPoolMeta.tokenAddress : apollosAddresses.usdc;
 
   const sellAmountRaw = useMemo(() => {
     if (!sellAmountInput.trim()) {
@@ -496,6 +497,13 @@ export function DexPoolsSection() {
         chainId: arbitrumSepolia.id,
       },
       {
+        address: buyTokenAddress,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [address ?? "0x0000000000000000000000000000000000000000"],
+        chainId: arbitrumSepolia.id,
+      },
+      {
         address: sellTokenAddress,
         abi: erc20Abi,
         functionName: "allowance",
@@ -515,15 +523,17 @@ export function DexPoolsSection() {
     ],
     allowFailure: true,
     query: {
-      enabled: Boolean(selectedPoolMeta && address),
+      enabled: Boolean(selectedPool && address),
       refetchInterval: 5000,
     },
   });
 
   const sellBalanceRaw = (swapReads?.[0]?.result as bigint | undefined) ?? BigInt(0);
-  const allowanceRaw = (swapReads?.[1]?.result as bigint | undefined) ?? BigInt(0);
-  const quoteResult = (swapReads?.[2]?.result as readonly [bigint, bigint] | undefined) ?? [BigInt(0), BigInt(0)];
+  const buyBalanceRaw = (swapReads?.[1]?.result as bigint | undefined) ?? BigInt(0);
+  const allowanceRaw = (swapReads?.[2]?.result as bigint | undefined) ?? BigInt(0);
+  const quoteResult = (swapReads?.[3]?.result as readonly [bigint, bigint] | undefined) ?? [BigInt(0), BigInt(0)];
   const quoteOutRaw = quoteResult[0];
+  const quoteFeeRaw = quoteResult[1];
 
   const parsedSellAmount = Number.parseFloat(sellAmountInput);
   const sellAmount = Number.isFinite(parsedSellAmount) && parsedSellAmount > 0 ? parsedSellAmount : 0;
@@ -531,6 +541,37 @@ export function DexPoolsSection() {
   const buyAmount = quoteOutRaw > BigInt(0) ? quotedBuyAmount : sellAmount * conversionRate;
   const sellUsdValue = isTokenReversed ? sellAmount : sellAmount * dynamicPrice;
   const buyUsdValue = isTokenReversed ? buyAmount * dynamicPrice : buyAmount;
+
+  const walletSellBalance = Number(formatUnits(sellBalanceRaw, sellDecimals));
+  const walletBuyBalance = Number(formatUnits(buyBalanceRaw, buyDecimals));
+  const feeRatePercent = selectedPoolKey.fee / 10000;
+  const feeAmount = Number(formatUnits(quoteFeeRaw, sellDecimals));
+  const feeUsdValue = isTokenReversed ? feeAmount : feeAmount * dynamicPrice;
+
+  const reserveInRaw = zeroForOne ? (poolState?.reserve0 ?? BigInt(0)) : (poolState?.reserve1 ?? BigInt(0));
+  const reserveOutRaw = zeroForOne ? (poolState?.reserve1 ?? BigInt(0)) : (poolState?.reserve0 ?? BigInt(0));
+  const reserveInAmount = Number(formatUnits(reserveInRaw, sellDecimals));
+  const reserveOutAmount = Number(formatUnits(reserveOutRaw, buyDecimals));
+
+  const expectedOutNoImpact =
+    reserveInAmount > 0 && reserveOutAmount > 0
+      ? (sellAmount - feeAmount) * (reserveOutAmount / reserveInAmount)
+      : 0;
+
+  const rawPriceImpactPercent =
+    expectedOutNoImpact > 0 && buyAmount > 0
+      ? ((expectedOutNoImpact - buyAmount) / expectedOutNoImpact) * 100
+      : 0;
+
+  const priceImpactPercent = Number.isFinite(rawPriceImpactPercent)
+    ? Math.max(0, rawPriceImpactPercent)
+    : 0;
+
+  const priceImpactLevel = priceImpactPercent < 0.5
+    ? "Low"
+    : priceImpactPercent < 2
+      ? "Medium"
+      : "High";
 
   const needsApproval = sellAmountRaw > BigInt(0) && allowanceRaw < sellAmountRaw;
   const hasEnoughBalance = sellAmountRaw <= sellBalanceRaw;
@@ -598,6 +639,22 @@ export function DexPoolsSection() {
   const dynamicVol24Value = formatCompactCurrency(Math.max(totalReserveUsd * 0.12, 0));
   const dynamicFees24Value = formatCompactCurrency(Math.max(totalReserveUsd * 0.12 * 0.003, 0));
 
+  const poolPriceDisplay = dynamicPrice;
+  const oraclePriceDisplay = oraclePrice > 0 ? oraclePrice : dynamicPrice;
+  const spreadPctRaw = oraclePriceDisplay > 0
+    ? ((poolPriceDisplay - oraclePriceDisplay) / oraclePriceDisplay) * 100
+    : 0;
+  const spreadPct = Number.isFinite(spreadPctRaw) ? spreadPctRaw : 0;
+  const spreadToneClass = spreadPct > 0.5
+    ? "text-red-600"
+    : spreadPct < -0.5
+      ? "text-emerald-600"
+      : "text-amber-600";
+
+  if (!selectedPool) {
+    return listView;
+  }
+
   return (
     <div className="mt-8 space-y-4 text-neutral-950">
       <div className="flex flex-wrap items-center gap-3 font-manrope text-sm text-neutral-600">
@@ -631,9 +688,22 @@ export function DexPoolsSection() {
                 </span>
               </div>
 
+              <div className="mt-4 flex flex-col gap-1">
+                <p className="font-manrope text-xs text-neutral-600">
+                  Pool Price: <span className="font-semibold text-neutral-900">1 {pairToken0} = {formatPrice(poolPriceDisplay)}</span>
+                </p>
+                <p className="font-manrope text-xs text-neutral-600">
+                  Oracle Price: <span className="font-semibold text-blue-700">1 {pairToken0} = {formatPrice(oraclePriceDisplay)}</span>
+                </p>
+                <p className={`font-manrope text-xs ${spreadToneClass}`}>
+                  Delta Spread: {spreadPct >= 0 ? "+" : ""}{spreadPct.toFixed(2)}%
+                </p>
+              </div>
+
               <p className="mt-5 font-syne text-3xl font-bold text-neutral-950 sm:text-4xl">{primaryMetricValue}</p>
               <p className="mt-1 font-manrope text-sm text-neutral-600">{valueLabel(metricMode, timeframe)}</p>
             </div>
+
           </div>
 
           <div className="mt-6 rounded-2xl border border-black/10 bg-[#f6f6f6] p-4">
@@ -805,7 +875,7 @@ export function DexPoolsSection() {
                     <ChevronDown className="h-4 w-4" />
                   </button>
                 </div>
-                <p className="mt-2 text-right font-manrope text-xs text-neutral-500">{formatTokenAmount(sellAmount)} {sellToken}</p>
+                <p className="mt-2 text-right font-manrope text-xs text-neutral-500">{formatTokenAmount(walletSellBalance)} {sellToken}</p>
               </div>
 
               <div className="flex justify-center">
@@ -834,10 +904,37 @@ export function DexPoolsSection() {
                     <ChevronDown className="h-4 w-4" />
                   </button>
                 </div>
-                <p className="mt-2 text-right font-manrope text-xs text-neutral-500">{formatTokenAmount(buyAmount)} {buyToken}</p>
+                <p className="mt-2 text-right font-manrope text-xs text-neutral-500">{formatTokenAmount(walletBuyBalance)} {buyToken}</p>
               </div>
             </div>
-
+            <div className="mt-3 rounded-2xl border border-black/10 bg-white px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-manrope text-xs text-neutral-600">Fee ({feeRatePercent.toFixed(2)}%)</p>
+                <p className="font-manrope text-xs text-neutral-900">
+                  {sellAmountRaw > BigInt(0) ? `${formatTokenAmount(feeAmount)} ${sellToken}` : "-"}
+                </p>
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-3">
+                <p className="font-manrope text-xs text-neutral-600">Price impact</p>
+                <p
+                  className={`font-manrope text-xs ${
+                    priceImpactLevel === "High"
+                      ? "text-red-600"
+                      : priceImpactLevel === "Medium"
+                        ? "text-amber-600"
+                        : "text-emerald-600"
+                  }`}
+                >
+                  {sellAmountRaw > BigInt(0) ? `${priceImpactPercent.toFixed(2)}% (${priceImpactLevel})` : "-"}
+                </p>
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-3">
+                <p className="font-manrope text-xs text-neutral-600">Fee value</p>
+                <p className="font-manrope text-xs text-neutral-900">
+                  {sellAmountRaw > BigInt(0) ? formatCompactCurrency(feeUsdValue) : "-"}
+                </p>
+              </div>
+            </div>
             <button
               type="button"
               onClick={() => {
@@ -920,6 +1017,18 @@ export function DexPoolsSection() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
