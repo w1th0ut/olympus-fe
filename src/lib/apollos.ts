@@ -7,21 +7,66 @@ function addr(value: string | undefined, fallback: Address): Address {
 }
 
 export const apollosAddresses = {
-  weth: addr(process.env.NEXT_PUBLIC_WETH_ADDRESS, "0x3457e70a80A4c4Fa4e30bE9ce7bBC4be74469D43"),
-  wbtc: addr(process.env.NEXT_PUBLIC_WBTC_ADDRESS, "0xD478c56A954E6c112970A1E2CD7012d16A367E37"),
-  link: addr(process.env.NEXT_PUBLIC_LINK_ADDRESS, "0x1f7306896330cB998FB8C096090157CCD9158c0d"),
-  usdc: addr(process.env.NEXT_PUBLIC_USDC_ADDRESS, "0x3107dF3CdD0A38D1ca213A733B5027424B20d45E"),
-  factory: addr(process.env.NEXT_PUBLIC_FACTORY_ADDRESS, "0x428e870468d47af76b8B40aC4309615b4818b6dE"),
-  vaultWeth: addr(process.env.NEXT_PUBLIC_WETH_VAULT_ADDRESS, "0x17A5dFe165A33247A2115C753e782D2A0F1d3fA3"),
-  vaultWbtc: addr(process.env.NEXT_PUBLIC_WBTC_VAULT_ADDRESS, "0xEc41Ea83381eF2ad79D39334b9E93381a98fD66D"),
-  vaultLink: addr(process.env.NEXT_PUBLIC_LINK_VAULT_ADDRESS, "0x1BA4d12D5eEc20d7710EeDa60946F65101fa0610"),
-  router: addr(process.env.NEXT_PUBLIC_ROUTER_ADDRESS, "0xC317dfCb50F5259Bada826135DdDd5f88Fb8f570"),
-  ccipReceiver: addr(process.env.NEXT_PUBLIC_CCIP_RECEIVER_ADDRESS, "0xebCAa26a9aF31758f65777e523aA248B1E4C0fD7"),
-  uniswapPool: addr(process.env.NEXT_PUBLIC_UNISWAP_POOL_ADDRESS, "0xf2FE0E306CFEFa76031c5A36843eDBa47740aa21"),
-  aavePool: addr(process.env.NEXT_PUBLIC_AAVE_POOL_ADDRESS, "0x21Cf62E67C48AB84235cEa440D50cf732E284500"),
-  lvrHook: addr(process.env.NEXT_PUBLIC_LVR_HOOK_ADDRESS, "0x5Ac4eeE6E533Febd8B8820485Dd378015259D936"),
-  baseUsdc: addr(process.env.NEXT_PUBLIC_BASE_USDC_ADDRESS, "0x036CbD53842c5426634e7929541eC2318f3dCF7e"),
-  sourceRouter: addr(process.env.NEXT_PUBLIC_SOURCE_ROUTER_ADDRESS, "0x11c808Fe95C8D8dC85d2f2C3deDCd6c44a03Ab97"),
+  weth: addr(
+    process.env.NEXT_PUBLIC_WETH_ADDRESS,
+    "0x0b7F7B47284cF10fB829A94605B6EEeE9a77b651",
+  ),
+  wbtc: addr(
+    process.env.NEXT_PUBLIC_WBTC_ADDRESS,
+    "0xA1Fc6bdFcF5aBD5c1DF873351f466AC467575Dce",
+  ),
+  link: addr(
+    process.env.NEXT_PUBLIC_LINK_ADDRESS,
+    "0x35d970Ea6C6C81a3DB28C4FBef87dC4eED9422D2",
+  ),
+  usdc: addr(
+    process.env.NEXT_PUBLIC_USDC_ADDRESS,
+    "0xD3aE3c10084aF1195845Fd0BCCa5beccBB28753d",
+  ),
+  factory: addr(
+    process.env.NEXT_PUBLIC_FACTORY_ADDRESS,
+    "0x26fF6038f2f4e39dF3d12Bd0b20D86d60c11378b",
+  ),
+  vaultWeth: addr(
+    process.env.NEXT_PUBLIC_WETH_VAULT_ADDRESS,
+    "0x578c1b767729D7da8366fbA579e1Cb1Ee3D14E70",
+  ),
+  vaultWbtc: addr(
+    process.env.NEXT_PUBLIC_WBTC_VAULT_ADDRESS,
+    "0x6E3B9C1DDD94811C7cA5b7DaA2C6d7B6c20AaA38",
+  ),
+  vaultLink: addr(
+    process.env.NEXT_PUBLIC_LINK_VAULT_ADDRESS,
+    "0xf1C471C25120AF71f6F5f962f143D841AA25C4eC",
+  ),
+  router: addr(
+    process.env.NEXT_PUBLIC_ROUTER_ADDRESS,
+    "0x106987ae77c0bC127e8168a4a4859d1bFB37D422",
+  ),
+  ccipReceiver: addr(
+    process.env.NEXT_PUBLIC_CCIP_RECEIVER_ADDRESS,
+    "0x951Fa17e3588C963f1584472AB3e0d059d5d3683",
+  ),
+  uniswapPool: addr(
+    process.env.NEXT_PUBLIC_UNISWAP_POOL_ADDRESS,
+    "0x83E7627A3B1363d73E269847e15b1aE1f29c9705",
+  ),
+  aavePool: addr(
+    process.env.NEXT_PUBLIC_AAVE_POOL_ADDRESS,
+    "0x4715383F64a391AA1e29672D510f9e1b928af59E",
+  ),
+  lvrHook: addr(
+    process.env.NEXT_PUBLIC_LVR_HOOK_ADDRESS,
+    "0x166Cd2bf0c8715478ce96D492E47ef030A881a9A",
+  ),
+  baseCcipBnm: addr(
+    process.env.NEXT_PUBLIC_BASE_CCIP_BNM_ADDRESS,
+    "0x88A2d74F47a237a62e7A51cdDa67270CE381555e",
+  ),
+  sourceRouter: addr(
+    process.env.NEXT_PUBLIC_SOURCE_ROUTER_ADDRESS,
+    "0xd4AAA8333B6A5408b12510b68bE78bB41edb628E",
+  ),
 } as const;
 
 export const ccipSelectors = {
