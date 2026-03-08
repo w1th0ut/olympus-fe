@@ -120,7 +120,7 @@ function DashboardPageContent() {
         <DashboardSidebar items={navItems} activeKey={activeKey} onSelect={handleSelect} />
 
         <main className="flex-1 px-6 py-8 sm:px-8 lg:px-12">
-          <DashboardHeader title={active.title} description={active.description} />
+          <DashboardHeader title={active.title} description={active.description} activeSection={activeKey} />
 
           {activeKey === "earn" ? <EarnSection /> : null}
           {activeKey === "balances" ? <MyBalancesSection /> : null}
@@ -140,3 +140,4 @@ export default function DashboardPage() {
     </Suspense>
   );
 }
+

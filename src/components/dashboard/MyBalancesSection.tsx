@@ -207,7 +207,7 @@ export function MyBalancesSection() {
     portfolioValue: isConnected ? formatCurrency(portfolioValue, 2) : "$0.00",
     lifetimeEarnings: "$0.00",
     averageApy: "12.5%",
-    averageHealth: !isConnected ? "-" : portfolioHealth !== null ? portfolioHealth.toFixed(2) : "-",
+    averageHealth: !isConnected ? "-" : portfolioHealth !== null ? portfolioHealth.toFixed(2) : "\u221E",
   };
 
   return (
@@ -389,6 +389,7 @@ export function MyBalancesSection() {
     </div>
   );
 }
+
 
 
 

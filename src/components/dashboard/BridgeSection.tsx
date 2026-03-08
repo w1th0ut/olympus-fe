@@ -12,9 +12,9 @@ import {
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
-import { aaveAbi, erc20Abi, sourceRouterAbi } from "@/lib/apollos-abi";
-import { apollosAddresses, ccipSelectors, vaultMarkets } from "@/lib/apollos";
-import { baseSepolia } from "wagmi/chains";
+import { aaveAbi, erc20Abi, sourceRouterAbi, uniswapAbi, vaultAbi } from "@/lib/apollos-abi";
+import { apollosAddresses, ccipSelectors, toPoolKey, vaultMarkets } from "@/lib/apollos";
+import { arbitrumSepolia, baseSepolia } from "wagmi/chains";
 
 type VaultKey = "afWETH" | "afWBTC" | "afLINK";
 
@@ -97,6 +97,11 @@ export function BridgeSection() {
 
   const selectedVault =
     vaultTargets.find((item) => item.key === targetVault) ?? vaultTargets[0];
+  const selectedVaultMarket =
+    vaultMarkets.find((market) => market.key === targetVault) ?? vaultMarkets[0];
+  const selectedPoolKey = toPoolKey(selectedVault.targetBaseAsset, apollosAddresses.usdc);
+  const zeroForOneUsdcToBase =
+    selectedPoolKey.currency0.toLowerCase() === apollosAddresses.usdc.toLowerCase();
 
   const amount = Number.parseFloat(amountInput);
   const parsedAmount = Number.isFinite(amount) && amount > 0 ? amount : 0;
@@ -188,20 +193,79 @@ export function BridgeSection() {
     bridgeFeeEth *
     (Number.isFinite(wethPriceUsd) && wethPriceUsd > 0 ? wethPriceUsd : 2600);
 
-  // Apply 10x conversion: 1 CCIP-BnM = 10 USDC equivalent
-  const destinationUsdcEquivalent = parsedAmount * 10;
-  const estimatedAfTokens =
-    destinationUsdcEquivalent / selectedVault.estimatePriceUsd;
+  // Match CCIPReceiver conversion logic exactly: 18 decimals (CCIP-BnM) -> 6 decimals (MockUSDC)
+  // mockUsdcAmount = (amountRaw * 10) / 1e12
+  const destinationUsdcEquivalentRaw = useMemo(() => {
+    if (amountRaw <= BigInt(0)) return BigInt(0);
+    const rawAmount = amountRaw * BigInt(10);
+    return rawAmount / BigInt(1_000_000_000_000);
+  }, [amountRaw]);
+
+  const destinationUsdcEquivalent = Number(formatUnits(destinationUsdcEquivalentRaw, 6));
+
+  const { data: estimatorSwapReads, isLoading: isEstimatorSwapLoading } = useReadContracts({
+    contracts: [
+      {
+        address: apollosAddresses.uniswapPool,
+        abi: uniswapAbi,
+        functionName: "getSwapQuote",
+        args: [selectedPoolKey, zeroForOneUsdcToBase, destinationUsdcEquivalentRaw],
+        chainId: arbitrumSepolia.id,
+      },
+    ],
+    allowFailure: true,
+    query: {
+      enabled: destinationUsdcEquivalentRaw > BigInt(0),
+      refetchInterval: 12000,
+    },
+  });
+
+  const swapQuote =
+    (estimatorSwapReads?.[0]?.result as readonly [bigint, bigint] | undefined) ?? [BigInt(0), BigInt(0)];
+  const quotedBaseOutRaw = swapQuote[0];
+
+  const { data: estimatorMintReads, isLoading: isEstimatorMintLoading } = useReadContracts({
+    contracts: [
+      {
+        address: selectedVaultMarket.vaultAddress,
+        abi: vaultAbi,
+        functionName: "previewDeposit",
+        args: [quotedBaseOutRaw],
+        chainId: arbitrumSepolia.id,
+      },
+    ],
+    allowFailure: true,
+    query: {
+      enabled: quotedBaseOutRaw > BigInt(0),
+      refetchInterval: 12000,
+    },
+  });
+
+  const estimatedSharesRaw =
+    (estimatorMintReads?.[0]?.result as bigint | undefined) ?? BigInt(0);
+
+  const estimatedAfTokens = useMemo(() => {
+    if (estimatedSharesRaw > BigInt(0)) {
+      return Number(formatUnits(estimatedSharesRaw, 18));
+    }
+
+    // Fallback if quote/read is unavailable
+    if (!Number.isFinite(destinationUsdcEquivalent) || selectedVault.estimatePriceUsd <= 0) {
+      return 0;
+    }
+
+    return destinationUsdcEquivalent / selectedVault.estimatePriceUsd;
+  }, [estimatedSharesRaw, destinationUsdcEquivalent, selectedVault.estimatePriceUsd]);
+
+  const isEstimatorLoading =
+    isEstimatorSwapLoading || (quotedBaseOutRaw > BigInt(0) && isEstimatorMintLoading);
 
   const needsApproval = amountRaw > BigInt(0) && allowanceRaw < amountRaw;
   const baseCcipBnmBalance = Number(formatUnits(baseUsdcBalanceRaw, 18)); // CCIP-BnM has 18 decimals
 
   const isOnBase = chainId === baseSepolia.id;
-  const canRoute =
-    parsedAmount > 0 &&
-    parsedAmount <= baseCcipBnmBalance &&
-    chainSupported &&
-    assetSupported;
+  const hasEnoughBalance = amountRaw > BigInt(0) && amountRaw <= baseUsdcBalanceRaw;
+  const canRoute = hasEnoughBalance && chainSupported && assetSupported;
 
   const {
     writeContractAsync,
@@ -442,7 +506,7 @@ export function BridgeSection() {
                   Estimated minted
                 </p>
                 <p className="font-syne text-lg font-bold text-neutral-950">
-                  {formatToken(estimatedAfTokens)} {selectedVault.key}
+                  {isEstimatorLoading ? "Calculating..." : `${formatToken(estimatedAfTokens)} ${selectedVault.key}`}
                 </p>
               </div>
             </div>
@@ -464,7 +528,7 @@ export function BridgeSection() {
           </button>
           {!chainSupported || !assetSupported ? (
             <p className="mt-2 font-manrope text-xs text-red-600">
-              Source router belum support lane/asset ini.
+              Source router does not support this lane/asset yet.
             </p>
           ) : null}
           {txHash ? (
@@ -577,6 +641,13 @@ export function BridgeSection() {
     </div>
   );
 }
+
+
+
+
+
+
+
 
 
 

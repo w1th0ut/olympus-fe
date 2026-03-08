@@ -4,17 +4,17 @@ import { useEffect, useRef, useState } from "react";
 import {
   useAccount,
   useBalance,
-  useChainId,
   useConnections,
   useDisconnect,
-  useSwitchChain,
 } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
+import { baseSepolia } from "wagmi/chains";
 import { targetChain } from "@/lib/wagmi";
 
 interface DashboardHeaderProps {
   title: string;
   description: string;
+  activeSection?: string;
 }
 
 function formatAddress(address?: string) {
@@ -25,19 +25,21 @@ function formatAddress(address?: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
-export function DashboardHeader({ title, description }: DashboardHeaderProps) {
+export function DashboardHeader({ title, description, activeSection }: DashboardHeaderProps) {
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
   const walletMenuRef = useRef<HTMLDivElement | null>(null);
 
   const { address, isConnected } = useAccount();
   const connections = useConnections();
-  const chainId = useChainId();
-  const isOnTargetChain = chainId === targetChain.id;
   const { openConnectModal } = useConnectModal();
+
+  const balanceChain = activeSection === "bridge" ? baseSepolia : targetChain;
+  const balanceLabel = activeSection === "bridge" ? "ETH Balance (Base)" : "ETH Balance (ARB)";
+
   const { data: nativeBalance, isLoading: isBalanceLoading } = useBalance({
     address,
-    chainId: targetChain.id,
+    chainId: balanceChain.id,
     query: {
       enabled: Boolean(address && isConnected),
       refetchInterval: 15_000,
@@ -45,12 +47,9 @@ export function DashboardHeader({ title, description }: DashboardHeaderProps) {
   });
 
   const { disconnectAsync, error: disconnectError, isPending: isDisconnectPending } = useDisconnect();
-  const { switchChain, error: switchError, isPending: isSwitchPending } = useSwitchChain();
 
-  const walletError = switchError ?? disconnectError;
-
-  const isPrimaryPending = isSwitchPending;
-  const explorerBaseUrl = targetChain.blockExplorers?.default.url;
+  const walletError = disconnectError;
+  const explorerBaseUrl = balanceChain.blockExplorers?.default.url;
   const primaryLabel = !isConnected ? "Connect Wallet" : formatAddress(address);
 
   const clearConnections = async () => {
@@ -116,16 +115,12 @@ export function DashboardHeader({ title, description }: DashboardHeaderProps) {
           <button
             type="button"
             onClick={handlePrimaryAction}
-            disabled={isPrimaryPending || isDisconnectPending || (!isConnected && !openConnectModal)}
+            disabled={isDisconnectPending || (!isConnected && !openConnectModal)}
             className="inline-flex items-center gap-3 self-start rounded-[16px] border border-neutral-950 bg-white px-5 py-2 shadow-[0px_10px_10px_0px_rgba(0,0,0,0.25)] disabled:cursor-not-allowed disabled:opacity-70"
           >
             <img src="/icons/Logo-Wallet.png" alt="" className="h-5 w-5 object-contain" />
             <span className="font-syne font-bold text-neutral-950 text-sm sm:text-base">
-              {isPrimaryPending
-                ? isSwitchPending
-                  ? "Switching..."
-                  : "Connecting..."
-                : primaryLabel}
+              {primaryLabel}
             </span>
           </button>
 
@@ -134,7 +129,7 @@ export function DashboardHeader({ title, description }: DashboardHeaderProps) {
               <p className="font-syne text-sm font-bold text-neutral-950">Wallet</p>
               <p className="mt-1 break-all font-manrope text-xs text-neutral-600">{address}</p>
               <div className="mt-2 rounded-lg border border-black/10 bg-black/[0.02] px-2.5 py-2">
-                <p className="font-manrope text-[11px] text-neutral-500">ETH Balance</p>
+                <p className="font-manrope text-[11px] text-neutral-500">{balanceLabel}</p>
                 <p className="font-syne text-sm font-bold text-neutral-900">
                   {isBalanceLoading
                     ? "Loading..."
@@ -168,17 +163,6 @@ export function DashboardHeader({ title, description }: DashboardHeaderProps) {
                   </span>
                 )}
               </div>
-
-              {!isOnTargetChain ? (
-                <button
-                  type="button"
-                  onClick={() => switchChain({ chainId: targetChain.id })}
-                  disabled={isSwitchPending}
-                  className="mt-2 w-full rounded-md bg-neutral-800 px-3 py-2 font-syne text-xs font-bold text-white transition-colors hover:bg-neutral-700 disabled:cursor-not-allowed disabled:bg-black/20 disabled:text-neutral-500"
-                >
-                  {isSwitchPending ? "Switching..." : `Switch to ${targetChain.name}`}
-                </button>
-              ) : null}
 
               <button
                 type="button"
