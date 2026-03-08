@@ -6,8 +6,8 @@ import { ArrowUpRight, CircleHelp } from "lucide-react";
 import { formatUnits } from "viem";
 import { useReadContracts } from "wagmi";
 import { arbitrumSepolia } from "wagmi/chains";
-import { aaveAbi, erc20Abi } from "@/lib/apollos-abi";
-import { apollosAddresses, vaultMarkets } from "@/lib/apollos";
+import { aaveAbi, erc20Abi, uniswapAbi, vaultAbi } from "@/lib/apollos-abi";
+import { apollosAddresses, toPoolKey, vaultMarkets } from "@/lib/apollos";
 
 const HEALTH_RANGE_LABELS = {
   "24h": ["00h", "04h", "08h", "12h", "16h", "20h", "24h"],
@@ -22,7 +22,6 @@ const CHART_HEIGHT = 230;
 const CHART_PADDING = 18;
 const CHART_MIN = 1.0;
 const CHART_MAX = 2.4;
-const MAX_HEALTH_DISPLAY = 9.99;
 
 function formatAmount(value: number) {
   return new Intl.NumberFormat("en-US").format(value);
@@ -87,18 +86,6 @@ function buildHealthSeries(baseHealth: number, range: HealthRange) {
   });
 }
 
-function parseHealthFactor(raw: bigint, hasDebt: boolean) {
-  if (!hasDebt) {
-    return null;
-  }
-
-  const parsed = Number(formatUnits(raw, 18));
-  if (!Number.isFinite(parsed)) {
-    return MAX_HEALTH_DISPLAY;
-  }
-  return Math.max(0, parsed);
-}
-
 export function LendBorrowMonitorSection() {
   const [healthRange, setHealthRange] = useState<HealthRange>("7d");
 
@@ -133,10 +120,23 @@ export function LendBorrowMonitorSection() {
         chainId: arbitrumSepolia.id,
       },
       {
+        address: market.vaultAddress,
+        abi: vaultAbi,
+        functionName: "totalAssets" as const,
+        chainId: arbitrumSepolia.id,
+      },
+      {
+        address: apollosAddresses.uniswapPool,
+        abi: uniswapAbi,
+        functionName: "getPoolStateByKey" as const,
+        args: [toPoolKey(market.tokenAddress, apollosAddresses.usdc)],
+        chainId: arbitrumSepolia.id,
+      },
+      {
         address: apollosAddresses.aavePool,
         abi: aaveAbi,
-        functionName: "getUserAccountData" as const,
-        args: [market.vaultAddress],
+        functionName: "assetPrices" as const,
+        args: [market.tokenAddress],
         chainId: arbitrumSepolia.id,
       },
     ]),
@@ -161,34 +161,43 @@ export function LendBorrowMonitorSection() {
     let creditLimitUsdc = 0;
     let collateralUsd = 0;
     let debtUsd = 0;
-    const trackedHealth: number[] = [];
 
-    vaultMarkets.forEach((_, index) => {
-      const offset = 2 + index * 3;
+    vaultMarkets.forEach((market, index) => {
+      const offset = 2 + index * 5;
       const userDebtRaw = (data?.[offset]?.result as bigint | undefined) ?? BigInt(0);
       const creditRaw = (data?.[offset + 1]?.result as bigint | undefined) ?? BigInt(0);
-      const accountData = (data?.[offset + 2]?.result as
-        | readonly [bigint, bigint, bigint, bigint, bigint, bigint]
-        | undefined) ?? [BigInt(0), BigInt(0), BigInt(0), BigInt(0), BigInt(0), BigInt(0)];
-
-      const totalCollateralBaseRaw = accountData[0];
-      const totalDebtBaseRaw = accountData[1];
-      const healthFactorRaw = accountData[5];
+      const totalAssetsRaw = (data?.[offset + 2]?.result as bigint | undefined) ?? BigInt(0);
+      const poolState = (data?.[offset + 3]?.result as
+        | { reserve0: bigint; reserve1: bigint }
+        | undefined);
+      const oraclePriceRaw = (data?.[offset + 4]?.result as bigint | undefined) ?? BigInt(0);
 
       const marketDebtUsdc = Number(formatUnits(userDebtRaw, 6));
       const marketCreditUsdc = Number(formatUnits(creditRaw, 6));
-      const marketCollateralUsd = Number(formatUnits(totalCollateralBaseRaw, 8));
-      const marketDebtUsd = Number(formatUnits(totalDebtBaseRaw, 8));
+      const marketNetAssetAmount = Number(formatUnits(totalAssetsRaw, market.decimals));
+
+      const isBaseCurrency0 =
+        market.tokenAddress.toLowerCase() < apollosAddresses.usdc.toLowerCase();
+      const reserveBaseRaw = isBaseCurrency0
+        ? (poolState?.reserve0 ?? BigInt(0))
+        : (poolState?.reserve1 ?? BigInt(0));
+      const reserveUsdcRaw = isBaseCurrency0
+        ? (poolState?.reserve1 ?? BigInt(0))
+        : (poolState?.reserve0 ?? BigInt(0));
+      const reserveBaseAmount = Number(formatUnits(reserveBaseRaw, market.decimals));
+      const reserveUsdcAmount = Number(formatUnits(reserveUsdcRaw, 6));
+      const poolPriceUsd = reserveBaseAmount > 0 ? reserveUsdcAmount / reserveBaseAmount : 0;
+      const oraclePriceUsd = Number(formatUnits(oraclePriceRaw, 8));
+      const marketPriceUsd = poolPriceUsd > 0 ? poolPriceUsd : oraclePriceUsd;
+
+      const marketNetAssetUsd = marketNetAssetAmount * marketPriceUsd;
+      const marketDebtUsd = marketDebtUsdc * usdcPrice;
+      const marketCollateralUsd = marketNetAssetUsd + marketDebtUsd;
 
       debtUsdc += marketDebtUsdc;
       creditLimitUsdc += marketCreditUsdc;
       collateralUsd += marketCollateralUsd;
       debtUsd += marketDebtUsd;
-
-      const parsedHealth = parseHealthFactor(healthFactorRaw, totalDebtBaseRaw > BigInt(0));
-      if (parsedHealth !== null) {
-        trackedHealth.push(parsedHealth);
-      }
     });
 
     return {
@@ -196,9 +205,8 @@ export function LendBorrowMonitorSection() {
       creditLimitUsdc,
       collateralUsd,
       debtUsd,
-      trackedHealth,
     };
-  }, [data]);
+  }, [data, usdcPrice]);
 
   const totalLiquidityUsdc = availableLiquidityUsdc + aggregate.debtUsdc;
   const reserveSizeUsd = totalLiquidityUsdc * usdcPrice;
@@ -212,9 +220,10 @@ export function LendBorrowMonitorSection() {
   const variableApyValue = 2.8 + utilizationRate * 0.04;
   const supplyApyValue = 2.1 + utilizationRate * 0.025;
 
+  const liquidationThreshold = 1.0;
   const healthFactor =
-    aggregate.trackedHealth.length > 0
-      ? Math.min(...aggregate.trackedHealth)
+    aggregate.debtUsd > 0
+      ? Math.max(0, (aggregate.collateralUsd * liquidationThreshold) / aggregate.debtUsd)
       : null;
 
   const chartHealthBase = healthFactor === null
@@ -235,7 +244,7 @@ export function LendBorrowMonitorSection() {
 
   const vaultHealth = {
     healthFactor,
-    liquidationThreshold: 1.0,
+    liquidationThreshold,
     totalCollateral: formatUsd(aggregate.collateralUsd, 2),
     totalDebt: formatUsd(aggregate.debtUsd, 2),
   };
@@ -586,8 +595,6 @@ export function LendBorrowMonitorSection() {
     </div>
   );
 }
-
-
 
 
 

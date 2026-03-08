@@ -22,7 +22,7 @@ const sourceChain = {
   name: "Base",
   networkTag: "L2",
   icon: "/icons/Logo-Base.png",
-  eta: "~2-4 min",
+  eta: "10-20 min",
   ccipLane: "BASE -> ARB",
 } as const;
 
@@ -103,7 +103,7 @@ export function BridgeSection() {
   const amountRaw = useMemo(() => {
     if (parsedAmount <= 0) return BigInt(0);
     try {
-      return parseUnits(parsedAmount.toString(), 6);
+      return parseUnits(parsedAmount.toString(), 18);
     } catch {
       return BigInt(0);
     }
@@ -216,6 +216,16 @@ export function BridgeSection() {
   const isCompleted = activeStep >= processSteps.length;
 
   useEffect(() => {
+    if (!isConnected || isOnBase || isSwitchPending) {
+      return;
+    }
+
+    void switchChainAsync({ chainId: baseSepolia.id }).catch(() => {
+      // User can reject wallet switch request.
+    });
+  }, [isConnected, isOnBase, isSwitchPending, switchChainAsync]);
+
+  useEffect(() => {
     if (!isRouting) {
       return;
     }
@@ -307,6 +317,17 @@ export function BridgeSection() {
           </h3>
 
           <div className="mt-4 space-y-5">
+                      <div className="rounded-xl border border-black/10 bg-[#f8f8f8] p-4">
+              <p className="font-manrope text-sm text-neutral-600">Need CCIP-BnM for testing?</p>
+              <a
+                href="https://docs.chain.link/ccip/test-tokens"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1 font-syne text-sm font-bold text-neutral-950 underline-offset-2 hover:underline"
+              >
+                Get CCIP test tokens (Faucet)
+              </a>
+            </div>
             <div className="rounded-xl border border-black/10 bg-[#f8f8f8] p-4">
               <p className="font-manrope text-sm text-neutral-600">Route</p>
               <div className="mt-2 flex flex-wrap items-center gap-3 text-neutral-700">
@@ -335,7 +356,12 @@ export function BridgeSection() {
                     placeholder="0.00"
                     className="w-full bg-transparent font-syne text-3xl font-bold text-neutral-950 outline-none placeholder:text-neutral-400"
                   />
-                  <span className="rounded-full border border-black/15 bg-[#f6f6f6] px-3 py-1 font-syne text-sm font-bold text-neutral-950">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-black/15 bg-[#f6f6f6] px-3 py-1 font-syne text-sm font-bold text-neutral-950">
+                    <img
+                      src="/images/ccip-bnm.webp"
+                      alt="CCIP-BnM"
+                      className="h-4 w-4 rounded-full object-cover"
+                    />
                     CCIP-BnM
                   </span>
                 </div>
@@ -405,7 +431,7 @@ export function BridgeSection() {
               </div>
               <div className="rounded-lg border border-black/10 bg-white p-3">
                 <p className="font-manrope text-xs text-neutral-600">
-                  USDC equivalent (10x)
+                  USDC equivalent
                 </p>
                 <p className="font-syne text-lg font-bold text-neutral-950">
                   {formatUsd(destinationUsdcEquivalent)}
@@ -551,3 +577,9 @@ export function BridgeSection() {
     </div>
   );
 }
+
+
+
+
+
+

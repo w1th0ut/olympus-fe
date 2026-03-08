@@ -1,7 +1,9 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useChainId, useSwitchChain } from "wagmi";
+import { arbitrumSepolia } from "wagmi/chains";
 import {
   DashboardSidebar,
   type DashboardNavItem,
@@ -80,12 +82,27 @@ function DashboardPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const chainId = useChainId();
+  const { switchChainAsync, isPending: isSwitchPending } = useSwitchChain();
 
   const tabParam = searchParams.get("tab");
   const activeKey: DashboardSectionKey = isDashboardSectionKey(tabParam)
     ? tabParam
     : "balances";
   const active = sectionMeta[activeKey];
+
+  useEffect(() => {
+    if (activeKey === "bridge") {
+      return;
+    }
+    if (chainId === arbitrumSepolia.id || isSwitchPending) {
+      return;
+    }
+
+    void switchChainAsync({ chainId: arbitrumSepolia.id }).catch(() => {
+      // User can reject wallet switch request.
+    });
+  }, [activeKey, chainId, isSwitchPending, switchChainAsync]);
 
   const handleSelect = (key: DashboardSectionKey) => {
     if (key === activeKey) {
