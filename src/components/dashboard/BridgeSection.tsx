@@ -246,7 +246,7 @@ export function BridgeSection() {
 
   const estimatedAfTokens = useMemo(() => {
     if (estimatedSharesRaw > BigInt(0)) {
-      return Number(formatUnits(estimatedSharesRaw, 18));
+      return Number(formatUnits(estimatedSharesRaw, selectedVaultMarket.decimals));
     }
 
     // Fallback if quote/read is unavailable
@@ -255,7 +255,7 @@ export function BridgeSection() {
     }
 
     return destinationUsdcEquivalent / selectedVault.estimatePriceUsd;
-  }, [estimatedSharesRaw, destinationUsdcEquivalent, selectedVault.estimatePriceUsd]);
+  }, [estimatedSharesRaw, destinationUsdcEquivalent, selectedVault.estimatePriceUsd, selectedVaultMarket.decimals]);
 
   const isEstimatorLoading =
     isEstimatorSwapLoading || (quotedBaseOutRaw > BigInt(0) && isEstimatorMintLoading);
@@ -434,7 +434,7 @@ export function BridgeSection() {
                 Wallet balance: {formatToken(baseCcipBnmBalance)} CCIP-BnM
               </p>
               <p className="mt-1 font-manrope text-xs text-emerald-600">
-                1 CCIP-BnM = 10 USDC equivalent
+                1 CCIP-BnM = 10 USDC
               </p>
             </div>
 
@@ -461,7 +461,7 @@ export function BridgeSection() {
                         <img
                           src={vault.icon}
                           alt=""
-                          className="h-6 w-6 rounded-full border border-black/15"
+                          className="h-7 w-7 shrink-0 object-contain"
                         />
                         <p className="font-syne text-sm font-bold text-neutral-950">
                           {vault.key}
@@ -495,7 +495,7 @@ export function BridgeSection() {
               </div>
               <div className="rounded-lg border border-black/10 bg-white p-3">
                 <p className="font-manrope text-xs text-neutral-600">
-                  USDC equivalent
+                  USDC
                 </p>
                 <p className="font-syne text-lg font-bold text-neutral-950">
                   {formatUsd(destinationUsdcEquivalent)}
@@ -526,7 +526,7 @@ export function BridgeSection() {
           >
             {buttonLabel}
           </button>
-          {!chainSupported || !assetSupported ? (
+          {isConnected && (!chainSupported || !assetSupported) ? (
             <p className="mt-2 font-manrope text-xs text-red-600">
               Source router does not support this lane/asset yet.
             </p>
@@ -624,7 +624,7 @@ export function BridgeSection() {
                   Completed
                 </p>
                 <p className="mt-1 font-manrope text-sm text-emerald-700">
-                  Your CCIP-BnM has been bridged (10x USDC equivalent) and
+                  Your CCIP-BnM has been bridged and
                   zapped into {selectedVault.key}.
                 </p>
                 <Link
@@ -641,6 +641,9 @@ export function BridgeSection() {
     </div>
   );
 }
+
+
+
 
 
 

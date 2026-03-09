@@ -3,13 +3,17 @@
 import { useMemo } from "react";
 import { formatUnits } from "viem";
 import { useReadContracts } from "wagmi";
+import { arbitrumSepolia } from "wagmi/chains";
 import { aaveAbi, vaultAbi } from "@/lib/apollos-abi";
 import { apollosAddresses, vaultMarkets } from "@/lib/apollos";
 
-const marketVisuals: Record<string, { apy: string; capacity: string; capacityValue: number }> = {
-  WETH: { apy: "27.12%", capacity: "100% (FILLED)", capacityValue: 100 },
-  WBTC: { apy: "36.30%", capacity: "100% (FILLED)", capacityValue: 100 },
-  LINK: { apy: "27.12%", capacity: "92.25%", capacityValue: 92.25 },
+const EARN_CAPACITY_AAVE_POOL = "0xA0228A7554ef04EA90a4C4c4995BbC218F7fB4D7" as const;
+const DEFAULT_POOL_BORROW_CAP_USDC = 1_000_000;
+
+const marketVisuals: Record<string, { apy: string }> = {
+  WETH: { apy: "27.12%" },
+  WBTC: { apy: "36.30%" },
+  LINK: { apy: "27.12%" },
 };
 
 function formatUsd(value: number, maximumFractionDigits = 2) {
@@ -35,12 +39,28 @@ export function EarnSection() {
       address: market.vaultAddress,
       abi: vaultAbi,
       functionName: "totalAssets" as const,
+      chainId: arbitrumSepolia.id,
     },
     {
-      address: apollosAddresses.aavePool,
+      address: EARN_CAPACITY_AAVE_POOL,
       abi: aaveAbi,
       functionName: "assetPrices" as const,
       args: [market.tokenAddress],
+      chainId: arbitrumSepolia.id,
+    },
+    {
+      address: EARN_CAPACITY_AAVE_POOL,
+      abi: aaveAbi,
+      functionName: "getUserDebt" as const,
+      args: [market.vaultAddress, apollosAddresses.usdc],
+      chainId: arbitrumSepolia.id,
+    },
+    {
+      address: EARN_CAPACITY_AAVE_POOL,
+      abi: aaveAbi,
+      functionName: "getCreditLimit" as const,
+      args: [market.vaultAddress, apollosAddresses.usdc],
+      chainId: arbitrumSepolia.id,
     },
   ]);
 
@@ -54,13 +74,21 @@ export function EarnSection() {
 
   const earnMarkets = useMemo(() => {
     return vaultMarkets.map((market, index) => {
-      const offset = index * 2;
+      const offset = index * 4;
       const totalAssets = (data?.[offset]?.result as bigint | undefined) ?? BigInt(0);
       const rawPrice = (data?.[offset + 1]?.result as bigint | undefined) ?? BigInt(0);
+      const rawDebt = (data?.[offset + 2]?.result as bigint | undefined) ?? BigInt(0);
+      const rawCreditLimit = (data?.[offset + 3]?.result as bigint | undefined) ?? BigInt(0);
 
       const assetAmount = Number(formatUnits(totalAssets, market.decimals));
       const usdPrice = Number(formatUnits(rawPrice, 8));
       const usdValue = assetAmount * usdPrice;
+      const debtUsdc = Number(formatUnits(rawDebt, 6));
+      const creditLimitUsdc = Number(formatUnits(rawCreditLimit, 6));
+      const maxBorrowUsdc = creditLimitUsdc > 0 ? creditLimitUsdc : DEFAULT_POOL_BORROW_CAP_USDC;
+      const capacityValue = Math.min(100, (debtUsdc / maxBorrowUsdc) * 100);
+      const capacity =
+        capacityValue >= 99.995 ? "100% (FILLED)" : `${capacityValue.toFixed(3)}%`;
 
       const visual = marketVisuals[market.symbol];
 
@@ -70,8 +98,8 @@ export function EarnSection() {
         apy: visual.apy,
         tvlPrimary: formatCompactToken(assetAmount, market.symbol),
         tvlSecondary: formatUsd(usdValue, 0),
-        capacity: visual.capacity,
-        capacityValue: visual.capacityValue,
+        capacity,
+        capacityValue,
         usdValue,
       };
     });
@@ -150,3 +178,4 @@ export function EarnSection() {
     </div>
   );
 }
+

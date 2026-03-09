@@ -125,32 +125,36 @@ export function MyBalancesSection() {
     contracts,
     allowFailure: true,
     query: {
-      enabled: Boolean(address),
+      enabled: true,
       refetchInterval: 15000,
     },
   });
 
   const activeVaultPositions = useMemo(() => {
-    return vaultMarkets.map((market, index) => {
-      const offset = 1 + index * 6;
-      const sharesRaw = (data?.[offset]?.result as bigint | undefined) ?? BigInt(0);
-      const sharePriceRaw = (data?.[offset + 1]?.result as bigint | undefined) ?? BigInt(0);
-      const priceRaw = (data?.[offset + 2]?.result as bigint | undefined) ?? BigInt(0);
+    return vaultMarkets
+      .map((market, index) => {
+        const offset = 1 + index * 6;
+        const sharesRaw = (data?.[offset]?.result as bigint | undefined) ?? BigInt(0);
+        const sharePriceRaw = (data?.[offset + 1]?.result as bigint | undefined) ?? BigInt(0);
+        const priceRaw = (data?.[offset + 2]?.result as bigint | undefined) ?? BigInt(0);
 
-      const shares = Number(formatUnits(sharesRaw, 18));
-      const baseAmountRaw = (sharesRaw * sharePriceRaw) / (BigInt(10) ** BigInt(18));
-      const baseAmount = Number(formatUnits(baseAmountRaw, market.decimals));
-      const usdPrice = Number(formatUnits(priceRaw, 8));
-      const valueUsd = baseAmount * usdPrice;
+        const shares = Number(formatUnits(sharesRaw, 18));
+        const baseAmountRaw = (sharesRaw * sharePriceRaw) / (BigInt(10) ** BigInt(18));
+        const baseAmount = Number(formatUnits(baseAmountRaw, market.decimals));
+        const usdPrice = Number(formatUnits(priceRaw, 8));
+        const valueUsd = baseAmount * usdPrice;
 
-      return {
-        symbol: market.key,
-        icon: market.afIcon,
-        balanceDisplay: formatNumber(shares, 4),
-        valueDisplay: formatCurrency(valueUsd, 2),
-        valueUsd,
-      };
-    });
+        return {
+          symbol: market.key,
+          icon: market.afIcon,
+          balanceDisplay: formatNumber(shares, 4),
+          valueDisplay: formatCurrency(valueUsd, 2),
+          valueUsd,
+          sharesRaw,
+        };
+      })
+      .filter((position) => position.sharesRaw > BigInt(0))
+      .map(({ sharesRaw: _sharesRaw, ...position }) => position);
   }, [data]);
 
   const portfolioValue = activeVaultPositions.reduce((sum, position) => sum + position.valueUsd, 0);
@@ -207,7 +211,7 @@ export function MyBalancesSection() {
     portfolioValue: isConnected ? formatCurrency(portfolioValue, 2) : "$0.00",
     lifetimeEarnings: "$0.00",
     averageApy: "12.5%",
-    averageHealth: !isConnected ? "-" : portfolioHealth !== null ? portfolioHealth.toFixed(2) : "\u221E",
+    averageHealth: portfolioHealth !== null ? portfolioHealth.toFixed(2) : "\u221E",
   };
 
   return (
@@ -276,33 +280,39 @@ export function MyBalancesSection() {
 
                 <div className="h-px bg-black/25" />
 
-                <div className="space-y-1 py-2">
-                  {activeVaultPositions.map((position) => (
-                    <div
-                      key={position.symbol}
-                      className="grid grid-cols-[1.7fr_0.9fr_1fr_0.8fr] items-center px-3 py-3"
-                    >
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={position.icon}
-                          alt=""
-                          className="h-10 w-10 object-contain"
-                        />
-                        <span className="font-syne text-lg font-bold text-neutral-950">{position.symbol}</span>
+                {activeVaultPositions.length > 0 ? (
+                  <div className="space-y-1 py-2">
+                    {activeVaultPositions.map((position) => (
+                      <div
+                        key={position.symbol}
+                        className="grid grid-cols-[1.7fr_0.9fr_1fr_0.8fr] items-center px-3 py-3"
+                      >
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={position.icon}
+                            alt=""
+                            className="h-10 w-10 object-contain"
+                          />
+                          <span className="font-syne text-lg font-bold text-neutral-950">{position.symbol}</span>
+                        </div>
+                        <span className="font-syne text-lg font-bold text-neutral-950">{position.balanceDisplay}</span>
+                        <span className="font-syne text-lg font-bold text-neutral-950">{position.valueDisplay}</span>
+                        <div className="flex justify-end">
+                          <Link
+                            href="/dashboard?tab=earn"
+                            className="rounded-md bg-neutral-800 px-4 py-1.5 font-syne text-base font-bold text-white shadow-[0px_6px_10px_0px_rgba(0,0,0,0.20)] transition-colors hover:bg-neutral-700"
+                          >
+                            Manage
+                          </Link>
+                        </div>
                       </div>
-                      <span className="font-syne text-lg font-bold text-neutral-950">{position.balanceDisplay}</span>
-                      <span className="font-syne text-lg font-bold text-neutral-950">{position.valueDisplay}</span>
-                      <div className="flex justify-end">
-                        <Link
-                          href="/dashboard?tab=earn"
-                          className="rounded-md bg-neutral-800 px-4 py-1.5 font-syne text-base font-bold text-white shadow-[0px_6px_10px_0px_rgba(0,0,0,0.20)] transition-colors hover:bg-neutral-700"
-                        >
-                          Manage
-                        </Link>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex min-h-[220px] items-center justify-center">
+                    <p className="font-manrope text-base text-neutral-500">No active positions.</p>
+                  </div>
+                )}
               </div>
             </div>
           </article>
@@ -389,6 +399,10 @@ export function MyBalancesSection() {
     </div>
   );
 }
+
+
+
+
 
 
 
