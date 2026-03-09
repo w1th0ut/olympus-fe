@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { formatUnits, parseUnits } from "viem";
-import { ArrowRight, CheckCircle2, Clock3 } from "lucide-react";
+import { decodeEventLog, formatUnits, parseUnits } from "viem";
+import { ArrowRight, CheckCircle2, Clock3, XCircle, AlertCircle, ExternalLink } from "lucide-react";
 import {
   useAccount,
   useChainId,
@@ -12,9 +12,11 @@ import {
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
-import { aaveAbi, erc20Abi, sourceRouterAbi, uniswapAbi, vaultAbi } from "@/lib/apollos-abi";
-import { apollosAddresses, ccipSelectors, toPoolKey, vaultMarkets } from "@/lib/apollos";
+import { aaveAbi, erc20Abi, sourceRouterAbi, uniswapAbi, vaultAbi, ccipReceiverAbi } from "@/lib/apollos-abi";
+import { apollosAddresses, ccipSelectors, vaultMarkets, toPoolKey } from "@/lib/apollos";
 import { arbitrumSepolia, baseSepolia } from "wagmi/chains";
+import { useCCIPStatus } from "@/hooks/useCCIPStatus";
+import { useBridgeState } from "@/hooks/useBridgeState";
 
 type VaultKey = "afWETH" | "afWBTC" | "afLINK";
 
@@ -22,7 +24,7 @@ const sourceChain = {
   name: "Base",
   networkTag: "L2",
   icon: "/icons/Logo-Base.png",
-  eta: "10-20 min",
+  eta: "15-20 min",
   ccipLane: "BASE -> ARB",
 } as const;
 
@@ -60,11 +62,23 @@ const vaultTargets: {
   },
 ];
 
-const processSteps = [
-  "Lock USDC on Base",
-  "Transmit CCIP message to Arbitrum",
-  "Execute Zap into selected Earn Vault",
-  "Mint afToken to your wallet",
+const timelineSteps = [
+  {
+    title: "Initiate on Base",
+    subtext: "Transaction sent via SourceRouter.",
+  },
+  {
+    title: "Cross-Chain Security",
+    subtext: "Waiting for CCIP Finality (~15-20 mins).",
+  },
+  {
+    title: "Ready to Zap",
+    subtext: "Assets arrived. Switch network to claim.",
+  },
+  {
+    title: "Yield Activated",
+    subtext: "Assets swapped & deposited to Vault.",
+  },
 ] as const;
 
 function formatUsd(value: number) {
@@ -92,8 +106,13 @@ export function BridgeSection() {
 
   const [targetVault, setTargetVault] = useState<VaultKey>("afWETH");
   const [amountInput, setAmountInput] = useState("");
-  const [isRouting, setIsRouting] = useState(false);
-  const [activeStep, setActiveStep] = useState(-1);
+  
+  // Persistent State
+  const { state: bridgeState, updateState, clearState, isLoaded } = useBridgeState();
+  const { messageId, step: activeStep } = bridgeState;
+
+  // CCIP Status Hook (polls on Arbitrum)
+  const { status: ccipStatus } = useCCIPStatus(messageId);
 
   const selectedVault =
     vaultTargets.find((item) => item.key === targetVault) ?? vaultTargets[0];
@@ -114,6 +133,7 @@ export function BridgeSection() {
     }
   }, [parsedAmount]);
 
+  // Reads for Approval and Fees
   const { data: bridgeReads } = useReadContracts({
     contracts: [
       {
@@ -160,12 +180,6 @@ export function BridgeSection() {
         ],
         chainId: baseSepolia.id,
       },
-      {
-        address: apollosAddresses.aavePool,
-        abi: aaveAbi,
-        functionName: "assetPrices",
-        args: [apollosAddresses.weth],
-      },
     ],
     allowFailure: true,
     query: {
@@ -174,35 +188,26 @@ export function BridgeSection() {
     },
   });
 
-  const chainSupported =
-    (bridgeReads?.[0]?.result as boolean | undefined) ?? false;
-  const assetSupported =
-    (bridgeReads?.[1]?.result as boolean | undefined) ?? false;
-  const baseUsdcBalanceRaw =
-    (bridgeReads?.[2]?.result as bigint | undefined) ?? BigInt(0);
-  const allowanceRaw =
-    (bridgeReads?.[3]?.result as bigint | undefined) ?? BigInt(0);
-  const bridgeFeeRaw =
-    (bridgeReads?.[4]?.result as bigint | undefined) ?? BigInt(0);
-  const wethPriceRaw =
-    (bridgeReads?.[5]?.result as bigint | undefined) ?? BigInt(0);
+  const chainSupported = (bridgeReads?.[0]?.result as boolean | undefined) ?? false;
+  const assetSupported = (bridgeReads?.[1]?.result as boolean | undefined) ?? false;
+  const baseUsdcBalanceRaw = (bridgeReads?.[2]?.result as bigint | undefined) ?? BigInt(0);
+  const allowanceRaw = (bridgeReads?.[3]?.result as bigint | undefined) ?? BigInt(0);
+  const bridgeFeeRaw = (bridgeReads?.[4]?.result as bigint | undefined) ?? BigInt(0);
 
   const bridgeFeeEth = Number(formatUnits(bridgeFeeRaw, 18));
-  const wethPriceUsd = Number(formatUnits(wethPriceRaw, 8));
-  const bridgeFee =
-    bridgeFeeEth *
-    (Number.isFinite(wethPriceUsd) && wethPriceUsd > 0 ? wethPriceUsd : 2600);
+  // Est ETH Price $2600 for fee display
+  const bridgeFee = bridgeFeeEth * 2600;
 
-  // Match CCIPReceiver conversion logic exactly: 18 decimals (CCIP-BnM) -> 6 decimals (MockUSDC)
-  // mockUsdcAmount = (amountRaw * 10) / 1e12
+  // Estimate Destination Amount (1 CCIP-BnM = 10 USDC)
   const destinationUsdcEquivalentRaw = useMemo(() => {
     if (amountRaw <= BigInt(0)) return BigInt(0);
     const rawAmount = amountRaw * BigInt(10);
-    return rawAmount / BigInt(1_000_000_000_000);
+    return rawAmount / BigInt(1_000_000_000_000); // 18 -> 6 decimals
   }, [amountRaw]);
 
   const destinationUsdcEquivalent = Number(formatUnits(destinationUsdcEquivalentRaw, 6));
 
+  // Estimate Swap & Deposit
   const { data: estimatorSwapReads, isLoading: isEstimatorSwapLoading } = useReadContracts({
     contracts: [
       {
@@ -214,14 +219,10 @@ export function BridgeSection() {
       },
     ],
     allowFailure: true,
-    query: {
-      enabled: destinationUsdcEquivalentRaw > BigInt(0),
-      refetchInterval: 12000,
-    },
+    query: { enabled: destinationUsdcEquivalentRaw > BigInt(0), refetchInterval: 12000 },
   });
 
-  const swapQuote =
-    (estimatorSwapReads?.[0]?.result as readonly [bigint, bigint] | undefined) ?? [BigInt(0), BigInt(0)];
+  const swapQuote = (estimatorSwapReads?.[0]?.result as readonly [bigint, bigint] | undefined) ?? [BigInt(0), BigInt(0)];
   const quotedBaseOutRaw = swapQuote[0];
 
   const { data: estimatorMintReads, isLoading: isEstimatorMintLoading } = useReadContracts({
@@ -235,100 +236,110 @@ export function BridgeSection() {
       },
     ],
     allowFailure: true,
-    query: {
-      enabled: quotedBaseOutRaw > BigInt(0),
-      refetchInterval: 12000,
-    },
+    query: { enabled: quotedBaseOutRaw > BigInt(0), refetchInterval: 12000 },
   });
 
-  const estimatedSharesRaw =
-    (estimatorMintReads?.[0]?.result as bigint | undefined) ?? BigInt(0);
-
+  const estimatedSharesRaw = (estimatorMintReads?.[0]?.result as bigint | undefined) ?? BigInt(0);
   const estimatedAfTokens = useMemo(() => {
     if (estimatedSharesRaw > BigInt(0)) {
       return Number(formatUnits(estimatedSharesRaw, selectedVaultMarket.decimals));
     }
-
-    // Fallback if quote/read is unavailable
     if (!Number.isFinite(destinationUsdcEquivalent) || selectedVault.estimatePriceUsd <= 0) {
       return 0;
     }
-
     return destinationUsdcEquivalent / selectedVault.estimatePriceUsd;
   }, [estimatedSharesRaw, destinationUsdcEquivalent, selectedVault.estimatePriceUsd, selectedVaultMarket.decimals]);
 
-  const isEstimatorLoading =
-    isEstimatorSwapLoading || (quotedBaseOutRaw > BigInt(0) && isEstimatorMintLoading);
-
+  const isEstimatorLoading = isEstimatorSwapLoading || (quotedBaseOutRaw > BigInt(0) && isEstimatorMintLoading);
   const needsApproval = amountRaw > BigInt(0) && allowanceRaw < amountRaw;
-  const baseCcipBnmBalance = Number(formatUnits(baseUsdcBalanceRaw, 18)); // CCIP-BnM has 18 decimals
-
+  const baseCcipBnmBalance = Number(formatUnits(baseUsdcBalanceRaw, 18));
   const isOnBase = chainId === baseSepolia.id;
+  const isOnArbitrum = chainId === arbitrumSepolia.id;
   const hasEnoughBalance = amountRaw > BigInt(0) && amountRaw <= baseUsdcBalanceRaw;
   const canRoute = hasEnoughBalance && chainSupported && assetSupported;
 
+  // --- Transactions ---
+
+  // 1. Approve
   const {
-    writeContractAsync,
-    data: txHash,
-    isPending: isWritePending,
+    writeContractAsync: writeApprove,
+    isPending: isApprovePending,
   } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
-    hash: txHash,
+  
+  const { isLoading: isApproveConfirming } = useWaitForTransactionReceipt({
+    hash: undefined, // We don't track approve hash globally
   });
 
-  const isBusy = isRouting || isSwitchPending || isWritePending || isConfirming;
-  const isCompleted = activeStep >= processSteps.length;
+  // 2. Bridge (Source)
+  const {
+    writeContractAsync: writeBridge,
+    data: bridgeTxHash,
+    isPending: isBridgePending,
+  } = useWriteContract();
+  
+  const { isLoading: isBridgeConfirming, isSuccess: isBridgeSuccess, data: bridgeReceipt } = useWaitForTransactionReceipt({
+    hash: bridgeTxHash,
+  });
 
+  // 3. Execute Zap (Destination)
+  const {
+    writeContractAsync: writeZap,
+    data: zapTxHash,
+    isPending: isZapPending,
+  } = useWriteContract();
+
+  const { isLoading: isZapConfirming, isSuccess: isZapSuccess } = useWaitForTransactionReceipt({
+    hash: zapTxHash,
+  });
+
+  const isRouting = activeStep >= 0;
+  const isBusy = isSwitchPending || isApprovePending || isApproveConfirming || isBridgePending || isBridgeConfirming || isZapPending || isZapConfirming;
+  const isCompleted = activeStep >= 3 && ccipStatus === "success"; // Step 3 completed
+  const isFailed = ccipStatus === "failed";
+  const isReadyToZap = ccipStatus === "stored";
+
+  // Handle Bridge Success -> Set Step 1 & Save State
   useEffect(() => {
-    if (!isConnected || isOnBase || isSwitchPending) {
-      return;
+    if (isBridgeSuccess && bridgeReceipt) {
+      updateState({ step: 1, txHash: bridgeTxHash });
+      setAmountInput(""); // Reset input to prevent "Approve" logic from triggering again
+      try {
+        const logs = bridgeReceipt.logs;
+        for (const log of logs) {
+          try {
+            const event = decodeEventLog({
+              abi: sourceRouterAbi,
+              data: log.data,
+              topics: log.topics,
+            });
+            if (event.eventName === "CrossChainBridgeInitiated") {
+              const msgId = event.args.messageId;
+              updateState({ messageId: msgId, timestamp: Date.now() });
+              break;
+            }
+          } catch { continue; }
+        }
+      } catch (e) { console.error(e); }
     }
+  }, [isBridgeSuccess, bridgeReceipt]);
 
-    void switchChainAsync({ chainId: baseSepolia.id }).catch(() => {
-      // User can reject wallet switch request.
-    });
-  }, [isConnected, isOnBase, isSwitchPending, switchChainAsync]);
-
+  // Update Status based on CCIP Hook
   useEffect(() => {
-    if (!isRouting) {
-      return;
-    }
-
-    if (activeStep >= processSteps.length) {
-      const doneTimer = window.setTimeout(() => {
-        setIsRouting(false);
-      }, 1200);
-
-      return () => window.clearTimeout(doneTimer);
-    }
-
-    const timer = window.setTimeout(() => {
-      setActiveStep((previous) => previous + 1);
-    }, 900);
-
-    return () => window.clearTimeout(timer);
-  }, [activeStep, isRouting]);
-
-  useEffect(() => {
-    if (isSuccess && txHash) {
-      setActiveStep(processSteps.length);
-      setIsRouting(true);
-    }
-  }, [isSuccess, txHash]);
+    if (!isLoaded) return;
+    if (ccipStatus === "pending" && activeStep < 1) updateState({ step: 1 });
+    if (ccipStatus === "stored" && activeStep < 2) updateState({ step: 2 }); // Ready to Zap
+    if (ccipStatus === "success") updateState({ step: 4 }); // Finished
+  }, [ccipStatus, activeStep, isLoaded]);
 
   const handleRoute = async () => {
-    if (!isConnected || !address || !canRoute || isBusy) {
-      return;
-    }
-
+    if (!isConnected || !address || !canRoute || isBusy) return;
     try {
       if (!isOnBase) {
         await switchChainAsync({ chainId: baseSepolia.id });
         return;
       }
-
       if (needsApproval) {
-        await writeContractAsync({
+        await writeApprove({
           address: apollosAddresses.baseCcipBnm,
           abi: erc20Abi,
           functionName: "approve",
@@ -337,11 +348,10 @@ export function BridgeSection() {
         });
         return;
       }
+      
+      updateState({ step: 0 }); // Lock USDC on Base
 
-      setActiveStep(0);
-      setIsRouting(true);
-
-      await writeContractAsync({
+      await writeBridge({
         address: apollosAddresses.sourceRouter,
         abi: sourceRouterAbi,
         functionName: "bridgeToArbitrum",
@@ -357,20 +367,76 @@ export function BridgeSection() {
         chainId: baseSepolia.id,
       });
     } catch {
-      setIsRouting(false);
-      setActiveStep(-1);
+      updateState({ step: -1 });
     }
   };
 
-  const buttonLabel = !isConnected
-    ? "Connect Wallet"
-    : !isOnBase
-      ? "Switch to Base"
-      : needsApproval
-        ? "Approve CCIP-BnM"
-        : isBusy
-          ? "Routing via CCIP..."
-          : "Bridge CCIP-BnM and Zap to Earn";
+  const handleExecuteZap = async () => {
+    if (!messageId || !isConnected) return;
+    try {
+      if (!isOnArbitrum) {
+        await switchChainAsync({ chainId: arbitrumSepolia.id });
+        return;
+      }
+      await writeZap({
+        address: apollosAddresses.ccipReceiver,
+        abi: ccipReceiverAbi,
+        functionName: "executeZap",
+        args: [messageId],
+        chainId: arbitrumSepolia.id,
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleClearState = () => {
+    clearState();
+    setAmountInput("");
+  };
+
+  const getButtonLabel = () => {
+    if (!isConnected) return "Connect Wallet";
+    
+    // 1. Critical: Check Network for Zap Phase
+    // If ready to zap but on wrong network, user MUST switch.
+    if (isReadyToZap && !isOnArbitrum) {
+      return "Switch to Arbitrum to Zap";
+    }
+
+    // 2. Waiting State (Passive)
+    const isWaitingForCCIP = (messageId || bridgeState.txHash || bridgeTxHash) && !isReadyToZap;
+    if (isWaitingForCCIP) {
+      return "Waiting for CCIP...";
+    }
+
+    // 3. Action: Zap (Execution) - HIGH PRIORITY
+    // If ready to zap and we ARE on Arbitrum, show Zap button immediately.
+    // This prevents falling through to "Switch to Base" logic.
+    if (isReadyToZap && isOnArbitrum) {
+      return isZapPending || isZapConfirming ? "Executing Zap..." : "Claim & Zap Assets";
+    }
+
+    // 4. Critical: Check Network for Bridge Phase
+    // Only ask to switch to Base if we are NOT waiting and NOT ready to zap.
+    if (!isWaitingForCCIP && !isReadyToZap && !isOnBase) {
+      return "Switch to Base";
+    }
+
+    // 5. Busy State (Transaction processing)
+    if (isBusy) return "Processing...";
+
+    // 6. Action: Bridge (Approval Logic)
+    if (amountRaw > BigInt(0) && needsApproval) {
+      return isApprovePending || isApproveConfirming ? "Approving..." : "Approve CCIP-BnM";
+    }
+    
+    return "Bridge CCIP-BnM and Zap to Earn";
+  };
+
+  const isNetworkSwitchRequired = 
+    (isReadyToZap && !isOnArbitrum) || 
+    (!messageId && !bridgeState.txHash && !bridgeTxHash && !isOnBase && !isReadyToZap);
 
   return (
     <div className="mt-8">
@@ -381,7 +447,7 @@ export function BridgeSection() {
           </h3>
 
           <div className="mt-4 space-y-5">
-                      <div className="rounded-xl border border-black/10 bg-[#f8f8f8] p-4">
+            <div className="rounded-xl border border-black/10 bg-[#f8f8f8] p-4">
               <p className="font-manrope text-sm text-neutral-600">Need CCIP-BnM for testing?</p>
               <a
                 href="https://docs.chain.link/ccip/test-tokens"
@@ -395,20 +461,14 @@ export function BridgeSection() {
             <div className="rounded-xl border border-black/10 bg-[#f8f8f8] p-4">
               <p className="font-manrope text-sm text-neutral-600">Route</p>
               <div className="mt-2 flex flex-wrap items-center gap-3 text-neutral-700">
-                <span className="rounded-lg border border-black/15 bg-white px-3 py-1 font-syne text-sm font-bold">
-                  Base
-                </span>
+                <span className="rounded-lg border border-black/15 bg-white px-3 py-1 font-syne text-sm font-bold">Base</span>
                 <ArrowRight className="h-4 w-4" />
-                <span className="rounded-lg border border-black/15 bg-white px-3 py-1 font-syne text-sm font-bold">
-                  Arbitrum
-                </span>
+                <span className="rounded-lg border border-black/15 bg-white px-3 py-1 font-syne text-sm font-bold">Arbitrum</span>
               </div>
             </div>
 
             <div>
-              <p className="font-manrope text-sm text-neutral-600">
-                Deposit amount (CCIP-BnM)
-              </p>
+              <p className="font-manrope text-sm text-neutral-600">Deposit amount (CCIP-BnM)</p>
               <div className="mt-2 rounded-xl border border-black/10 bg-white p-4">
                 <div className="flex items-center justify-between gap-3">
                   <input
@@ -417,62 +477,41 @@ export function BridgeSection() {
                     step="any"
                     value={amountInput}
                     onChange={(event) => setAmountInput(event.target.value)}
+                    disabled={isRouting}
                     placeholder="0.00"
-                    className="w-full bg-transparent font-syne text-3xl font-bold text-neutral-950 outline-none placeholder:text-neutral-400"
+                    className="w-full bg-transparent font-syne text-3xl font-bold text-neutral-950 outline-none placeholder:text-neutral-400 disabled:opacity-50"
                   />
                   <span className="inline-flex items-center gap-2 rounded-full border border-black/15 bg-[#f6f6f6] px-3 py-1 font-syne text-sm font-bold text-neutral-950">
-                    <img
-                      src="/images/ccip-bnm.webp"
-                      alt="CCIP-BnM"
-                      className="h-4 w-4 rounded-full object-cover"
-                    />
+                    <img src="/images/ccip-bnm.webp" alt="CCIP-BnM" className="h-4 w-4 rounded-full object-cover" />
                     CCIP-BnM
                   </span>
                 </div>
               </div>
-              <p className="mt-2 font-manrope text-xs text-neutral-500">
-                Wallet balance: {formatToken(baseCcipBnmBalance)} CCIP-BnM
-              </p>
-              <p className="mt-1 font-manrope text-xs text-emerald-600">
-                1 CCIP-BnM = 10 USDC
-              </p>
+              <p className="mt-2 font-manrope text-xs text-neutral-500">Wallet balance: {formatToken(baseCcipBnmBalance)} CCIP-BnM</p>
+              <p className="mt-1 font-manrope text-xs text-emerald-600">1 CCIP-BnM = 10 USDC</p>
             </div>
 
             <div>
-              <p className="font-manrope text-sm text-neutral-600">
-                Choose destination Earn vault
-              </p>
+              <p className="font-manrope text-sm text-neutral-600">Choose destination Earn vault</p>
               <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 {vaultTargets.map((vault) => {
                   const active = vault.key === targetVault;
-
                   return (
                     <button
                       key={vault.key}
                       type="button"
+                      disabled={isRouting}
                       onClick={() => setTargetVault(vault.key)}
-                      className={`rounded-xl border p-3 text-left transition-colors ${
-                        active
-                          ? "border-neutral-950 bg-black/[0.04]"
-                          : "border-black/10 bg-white hover:bg-black/[0.03]"
+                      className={`rounded-xl border p-3 text-left transition-colors disabled:opacity-50 ${
+                        active ? "border-neutral-950 bg-black/[0.04]" : "border-black/10 bg-white hover:bg-black/[0.03]"
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <img
-                          src={vault.icon}
-                          alt=""
-                          className="h-7 w-7 shrink-0 object-contain"
-                        />
-                        <p className="font-syne text-sm font-bold text-neutral-950">
-                          {vault.key}
-                        </p>
+                        <img src={vault.icon} alt="" className="h-7 w-7 shrink-0 object-contain" />
+                        <p className="font-syne text-sm font-bold text-neutral-950">{vault.key}</p>
                       </div>
-                      <p className="mt-2 font-manrope text-xs text-neutral-600">
-                        {vault.subtitle}
-                      </p>
-                      <p className="mt-1 font-syne text-sm font-bold text-emerald-600">
-                        {vault.expectedApy} APY
-                      </p>
+                      <p className="mt-2 font-manrope text-xs text-neutral-600">{vault.subtitle}</p>
+                      <p className="mt-1 font-syne text-sm font-bold text-emerald-600">{vault.expectedApy} APY</p>
                     </button>
                   );
                 })}
@@ -481,30 +520,18 @@ export function BridgeSection() {
           </div>
 
           <div className="mt-5 rounded-xl border border-black/10 bg-[#f8f8f8] p-4">
-            <p className="font-syne text-base font-bold text-neutral-950">
-              Route Preview
-            </p>
+            <p className="font-syne text-base font-bold text-neutral-950">Route Preview</p>
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="rounded-lg border border-black/10 bg-white p-3">
-                <p className="font-manrope text-xs text-neutral-600">
-                  Estimated bridge fee
-                </p>
-                <p className="font-syne text-lg font-bold text-neutral-950">
-                  {formatUsd(bridgeFee)}
-                </p>
+                <p className="font-manrope text-xs text-neutral-600">Estimated bridge fee</p>
+                <p className="font-syne text-lg font-bold text-neutral-950">{formatUsd(bridgeFee)}</p>
               </div>
               <div className="rounded-lg border border-black/10 bg-white p-3">
-                <p className="font-manrope text-xs text-neutral-600">
-                  USDC
-                </p>
-                <p className="font-syne text-lg font-bold text-neutral-950">
-                  {formatUsd(destinationUsdcEquivalent)}
-                </p>
+                <p className="font-manrope text-xs text-neutral-600">USDC</p>
+                <p className="font-syne text-lg font-bold text-neutral-950">{formatUsd(destinationUsdcEquivalent)}</p>
               </div>
               <div className="rounded-lg border border-black/10 bg-white p-3 sm:col-span-2">
-                <p className="font-manrope text-xs text-neutral-600">
-                  Estimated minted
-                </p>
+                <p className="font-manrope text-xs text-neutral-600">Estimated minted</p>
                 <p className="font-syne text-lg font-bold text-neutral-950">
                   {isEstimatorLoading ? "Calculating..." : `${formatToken(estimatedAfTokens)} ${selectedVault.key}`}
                 </p>
@@ -515,124 +542,158 @@ export function BridgeSection() {
           <button
             type="button"
             onClick={() => {
-              void handleRoute();
+              if (isReadyToZap) handleExecuteZap();
+              else handleRoute();
             }}
-            disabled={!canRoute || isBusy || !isConnected}
+            disabled={
+              !isConnected ||
+              // Disable if busy, UNLESS we just need to switch network (allow clicking to switch)
+              (isBusy && !isNetworkSwitchRequired) ||
+              // Disable if routing (waiting) but not ready to zap yet
+              (isRouting && !isReadyToZap && !isNetworkSwitchRequired) ||
+              // Disable if trying to bridge but balance is low (and not switching)
+              (!isReadyToZap && !canRoute && !isNetworkSwitchRequired)
+            }
             className={`mt-5 inline-flex w-full items-center justify-center gap-2 rounded-md px-4 py-2 font-syne text-base font-bold shadow-[0px_6px_10px_0px_rgba(0,0,0,0.20)] transition-colors ${
-              canRoute && !isBusy && isConnected
+              ((canRoute && !isBusy) || isReadyToZap || isNetworkSwitchRequired) && isConnected
                 ? "bg-neutral-800 text-white hover:bg-neutral-700"
                 : "bg-black/10 text-neutral-500 shadow-none"
             }`}
           >
-            {buttonLabel}
+            {getButtonLabel()}
           </button>
-          {isConnected && (!chainSupported || !assetSupported) ? (
-            <p className="mt-2 font-manrope text-xs text-red-600">
-              Source router does not support this lane/asset yet.
-            </p>
+
+          {isCompleted || isFailed ? (
+            <button
+              onClick={handleClearState}
+              className="mt-3 w-full text-center font-manrope text-xs text-neutral-500 hover:text-neutral-700 hover:underline"
+            >
+              Start New Bridge Transfer
+            </button>
           ) : null}
-          {txHash ? (
-            <p className="mt-2 break-all font-manrope text-xs text-neutral-500">
-              Tx: {txHash}
-            </p>
+
+          {(bridgeState.txHash || bridgeTxHash) ? (
+            <div className="mt-2 space-y-1">
+               <p className="break-all font-manrope text-xs text-neutral-500">Bridge Tx: {bridgeState.txHash || bridgeTxHash}</p>
+               {messageId ? (
+                 <a 
+                   href={`https://ccip.chain.link/msg/${messageId}`}
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   className="inline-flex items-center gap-1 break-all font-manrope text-xs font-bold text-blue-600 hover:underline"
+                 >
+                   CCIP Explorer: {messageId}
+                   <ExternalLink className="h-3 w-3" />
+                 </a>
+               ) : null}
+            </div>
+          ) : null}
+          {zapTxHash ? (
+            <div className="mt-2">
+               <p className="break-all font-manrope text-xs text-neutral-500">Zap Tx: {zapTxHash}</p>
+            </div>
           ) : null}
         </article>
 
         <div className="space-y-4">
           <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
-            <h3 className="font-syne text-lg font-bold text-neutral-950">
-              Route Guarantees
-            </h3>
+            <h3 className="font-syne text-lg font-bold text-neutral-950">Route Guarantees</h3>
             <div className="mt-4 space-y-3">
               <div className="rounded-lg border border-black/10 p-3">
-                <p className="font-manrope text-xs text-neutral-600">
-                  Source Chain
-                </p>
+                <p className="font-manrope text-xs text-neutral-600">Source Chain</p>
                 <div className="mt-1 flex items-center gap-2">
-                  <img
-                    src={sourceChain.icon}
-                    alt=""
-                    className="h-5 w-5 rounded-full border border-black/15"
-                  />
-                  <p className="font-syne text-base font-bold text-neutral-950">
-                    {sourceChain.name}
-                  </p>
-                  <span className="font-manrope text-xs text-neutral-500">
-                    {sourceChain.networkTag}
-                  </span>
+                  <img src={sourceChain.icon} alt="" className="h-5 w-5 rounded-full border border-black/15" />
+                  <p className="font-syne text-base font-bold text-neutral-950">{sourceChain.name}</p>
+                  <span className="font-manrope text-xs text-neutral-500">{sourceChain.networkTag}</span>
                 </div>
               </div>
               <div className="rounded-lg border border-black/10 p-3">
-                <p className="font-manrope text-xs text-neutral-600">
-                  Settlement Time
-                </p>
-                <p className="font-syne text-base font-bold text-neutral-950">
-                  {sourceChain.eta}
-                </p>
+                <p className="font-manrope text-xs text-neutral-600">Settlement Time</p>
+                <p className="font-syne text-base font-bold text-neutral-950">{sourceChain.eta}</p>
               </div>
               <div className="rounded-lg border border-black/10 p-3">
-                <p className="font-manrope text-xs text-neutral-600">
-                  CCIP Lane
-                </p>
-                <p className="font-syne text-base font-bold text-neutral-950">
-                  {sourceChain.ccipLane}
-                </p>
+                <p className="font-manrope text-xs text-neutral-600">CCIP Lane</p>
+                <p className="font-syne text-base font-bold text-neutral-950">{sourceChain.ccipLane}</p>
               </div>
             </div>
           </article>
 
           <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
-            <h3 className="font-syne text-lg font-bold text-neutral-950">
-              Execution Timeline
-            </h3>
+            <h3 className="font-syne text-lg font-bold text-neutral-950">Execution Timeline</h3>
             <div className="mt-4 space-y-3">
-              {processSteps.map((step, index) => {
+              {timelineSteps.map((step, index) => {
                 const completed = activeStep > index;
                 const current = activeStep === index;
+                const isReadyStep = index === 2 && isReadyToZap; // Highlight step 2 when ready
 
                 return (
                   <div
-                    key={step}
-                    className={`rounded-lg border px-3 py-2 transition-colors ${
+                    key={index}
+                    className={`rounded-lg border px-3 py-3 transition-colors ${
                       completed
                         ? "border-emerald-200 bg-emerald-50"
                         : current
                           ? "border-fuchsia-200 bg-fuchsia-50"
                           : "border-black/10 bg-white"
-                    }`}
+                    } ${isReadyStep ? "animate-pulse ring-2 ring-fuchsia-400" : ""}`}
                   >
-                    <div className="flex items-center gap-2">
-                      {completed ? (
-                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                      ) : current ? (
-                        <Clock3 className="h-4 w-4 text-fuchsia-600" />
-                      ) : (
-                        <Clock3 className="h-4 w-4 text-neutral-400" />
-                      )}
-                      <p className="font-manrope text-sm text-neutral-800">
-                        {step}
-                      </p>
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5">
+                        {completed ? (
+                          <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                        ) : current ? (
+                          <Clock3 className="h-5 w-5 text-fuchsia-600" />
+                        ) : (
+                          <Clock3 className="h-5 w-5 text-neutral-400" />
+                        )}
+                      </div>
+                      <div>
+                        <p className={`font-syne text-sm font-bold ${completed ? "text-emerald-900" : current ? "text-fuchsia-900" : "text-neutral-900"}`}>
+                          {step.title}
+                        </p>
+                        <p className="mt-0.5 font-manrope text-xs text-neutral-600">
+                          {step.subtext}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 );
               })}
             </div>
 
+            {isReadyToZap && !isCompleted ? (
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <p className="font-syne text-base font-bold text-amber-700">Action Required</p>
+                </div>
+                <p className="mt-1 font-manrope text-sm text-amber-700">
+                  Assets arrived on Arbitrum! Please switch network and click "Claim & Zap" to finish.
+                </p>
+              </div>
+            ) : null}
+
             {isCompleted ? (
               <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-                <p className="font-syne text-base font-bold text-emerald-700">
-                  Completed
-                </p>
+                <p className="font-syne text-base font-bold text-emerald-700">Completed</p>
                 <p className="mt-1 font-manrope text-sm text-emerald-700">
-                  Your CCIP-BnM has been bridged and
-                  zapped into {selectedVault.key}.
+                  Your assets have been zapped into {selectedVault.key}.
                 </p>
-                <Link
-                  href="/dashboard?tab=balances"
-                  className="mt-3 inline-flex rounded-lg border border-emerald-300 bg-white px-3 py-1 font-syne text-sm font-bold text-emerald-700"
-                >
+                <Link href="/dashboard?tab=balances" className="mt-3 inline-flex rounded-lg border border-emerald-300 bg-white px-3 py-1 font-syne text-sm font-bold text-emerald-700">
                   View My Balances
                 </Link>
+              </div>
+            ) : null}
+
+            {isFailed ? (
+              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3">
+                <div className="flex items-center gap-2">
+                  <XCircle className="h-4 w-4 text-red-600" />
+                  <p className="font-syne text-base font-bold text-red-700">Failed</p>
+                </div>
+                <p className="mt-1 font-manrope text-sm text-red-700">
+                  The cross-chain transaction failed on the destination chain.
+                </p>
               </div>
             ) : null}
           </article>
@@ -641,19 +702,3 @@ export function BridgeSection() {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -24,6 +24,17 @@ export const sourceRouterAbi = parseAbi([
   "function supportedAssets(address) view returns (bool)",
   "function getBridgeFee(uint64,address,uint256,uint256,address) view returns (uint256)",
   "function bridgeToArbitrum(address,uint256,uint64,address,uint256,address) payable returns (bytes32)",
+  "event CrossChainBridgeInitiated(bytes32 indexed messageId, uint64 indexed destinationChain, address indexed sender, address asset, uint256 amount, address receiver, address targetBaseAsset, uint256 minShares)",
+]);
+
+export const ccipReceiverAbi = parseAbi([
+  "function executeZap(bytes32 messageId) external",
+  "function pendingDeposits(bytes32) view returns (bytes32 messageId, uint64 sourceChainSelector, address sourceSender, address receiver, uint256 amount, address sourceAsset, address targetBaseAsset, uint256 minShares, bool executed)",
+  "event DepositStored(bytes32 indexed messageId, uint64 indexed sourceChainSelector, address indexed receiver, uint256 amount)",
+  "event ZapExecuted(bytes32 indexed messageId, address indexed vault, uint256 shares)",
+  "event ZapFailed(bytes32 indexed messageId, string reason)",
+  "event CrossChainDepositReceived(bytes32 indexed messageId, uint64 indexed sourceChainSelector, address indexed receiver, address asset, uint256 amount, uint256 shares)",
+  "event CrossChainDepositFailed(bytes32 indexed messageId, uint64 indexed sourceChainSelector, address indexed receiver, address asset, uint256 amount, string reason)",
 ]);
 
 export const uniswapAbi = parseAbi([
