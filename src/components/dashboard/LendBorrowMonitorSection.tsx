@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { ArrowUpRight, CircleHelp } from "lucide-react";
 import { formatUnits } from "viem";
 import { useReadContracts } from "wagmi";
-import { arbitrumSepolia } from "wagmi/chains";
+import { arbitrum, arbitrumSepolia } from "wagmi/chains";
 import { aaveAbi, erc20Abi, uniswapAbi, vaultAbi } from "@/lib/apollos-abi";
 import { apollosAddresses, toPoolKey, vaultMarkets } from "@/lib/apollos";
 
@@ -22,6 +22,20 @@ const CHART_HEIGHT = 230;
 const CHART_PADDING = 18;
 const CHART_MIN = 1.0;
 const CHART_MAX = 2.4;
+
+const AAVE_ARB_USDC_A_TOKEN = "0x724dc807b04555b71ed48a6896b6f41593b8c637" as const;
+const AAVE_ARB_USDC_VARIABLE_DEBT_TOKEN = "0xf611aeb5013fd2c0511c9cd55c7dc5c1140741a6" as const;
+const USDC_DECIMALS = 6;
+const SUPPLY_CAP_M = 512.3;
+const BORROW_CAP_M = 425.6;
+
+function formatMillion(value: number) {
+  return `${(value / 1_000_000).toFixed(2)}M`;
+}
+
+function formatMillionUsd(value: number) {
+  return `$ ${formatMillion(value)}`;
+}
 
 function formatAmount(value: number) {
   return new Intl.NumberFormat("en-US").format(value);
@@ -150,6 +164,27 @@ export function LendBorrowMonitorSection() {
     },
   });
 
+  const { data: reserveMainnetReads } = useReadContracts({
+    contracts: [
+      {
+        address: AAVE_ARB_USDC_A_TOKEN,
+        abi: erc20Abi,
+        functionName: "totalSupply",
+        chainId: arbitrum.id,
+      },
+      {
+        address: AAVE_ARB_USDC_VARIABLE_DEBT_TOKEN,
+        abi: erc20Abi,
+        functionName: "totalSupply",
+        chainId: arbitrum.id,
+      },
+    ],
+    allowFailure: true,
+    query: {
+      refetchInterval: 30000,
+    },
+  });
+
   const usdcPriceRaw = (data?.[0]?.result as bigint | undefined) ?? BigInt(100000000);
   const aaveUsdcBalanceRaw = (data?.[1]?.result as bigint | undefined) ?? BigInt(0);
 
@@ -209,16 +244,21 @@ export function LendBorrowMonitorSection() {
   }, [data, usdcPrice]);
 
   const totalLiquidityUsdc = availableLiquidityUsdc + aggregate.debtUsdc;
-  const reserveSizeUsd = totalLiquidityUsdc * usdcPrice;
-  const availableLiquidityUsd = availableLiquidityUsdc * usdcPrice;
-  const utilizationRate =
-    totalLiquidityUsdc > 0 ? (aggregate.debtUsdc / totalLiquidityUsdc) * 100 : 0;
-
   const borrowCapUsdc = Math.max(aggregate.creditLimitUsdc, totalLiquidityUsdc);
-  const borrowUtilization = borrowCapUsdc > 0 ? (aggregate.debtUsdc / borrowCapUsdc) * 100 : 0;
 
-  const variableApyValue = 2.8 + utilizationRate * 0.04;
-  const supplyApyValue = 2.1 + utilizationRate * 0.025;
+  const aaveSupplyRaw =
+    (reserveMainnetReads?.[0]?.result as bigint | undefined) ?? BigInt(0);
+  const aaveBorrowRaw =
+    (reserveMainnetReads?.[1]?.result as bigint | undefined) ?? BigInt(0);
+
+  const aaveSupplyUsdc = Number(formatUnits(aaveSupplyRaw, USDC_DECIMALS));
+  const aaveBorrowUsdc = Number(formatUnits(aaveBorrowRaw, USDC_DECIMALS));
+  const aaveAvailableLiquidityUsdc = Math.max(0, aaveSupplyUsdc - aaveBorrowUsdc);
+  const aaveUtilizationRate =
+    aaveSupplyUsdc > 0 ? (aaveBorrowUsdc / aaveSupplyUsdc) * 100 : 0;
+
+  const supplyCapUsdc = SUPPLY_CAP_M * 1_000_000;
+  const borrowCapUsdcForStats = BORROW_CAP_M * 1_000_000;
 
   const liquidationThreshold = 1.0;
   const healthFactor =
@@ -250,26 +290,29 @@ export function LendBorrowMonitorSection() {
   };
 
   const reserveMetrics = [
-    { label: "Reserve Size", value: "$ 3.89B" },
-    { label: "Available liquidity", value: "$ 1.17B" },
-    { label: "Utilization Rate", value: "69.85%" },
+    { label: "Reserve Size", value: formatMillionUsd(aaveSupplyUsdc) },
+    { label: "Available liquidity", value: formatMillionUsd(aaveAvailableLiquidityUsdc) },
+    { label: "Utilization Rate", value: `${aaveUtilizationRate.toFixed(2)}%` },
     { label: "Oracle price", value: "$ 1.00" },
   ] as const;
 
   const supplyInfo = {
-    utilization: 51.95,
-    totalLabel: "3.90B of 7.50B",
-    totalSubLabel: "$ 3.90B of $ 7.50B",
-    apy: "2.44 %",
+    utilization: supplyCapUsdc > 0 ? Math.min(100, (aaveSupplyUsdc / supplyCapUsdc) * 100) : 0,
+    totalLabel: `${formatMillion(aaveSupplyUsdc)} of ${SUPPLY_CAP_M.toFixed(2)}M`,
+    totalSubLabel: `${formatMillionUsd(aaveSupplyUsdc)} of $ ${SUPPLY_CAP_M.toFixed(2)}M`,
+    apy: "1.82 %",
   };
 
   const borrowInfo = {
-    utilization: 39.05,
-    totalLabel: "2.73B of 7.0B",
-    totalSubLabel: "$ 2.73B of $ 7.0B",
-    variableApy: "3.89 %",
-    borrowCap: "7.0B",
-    borrowCapSubLabel: "$ 7.0B",
+    utilization:
+      borrowCapUsdcForStats > 0
+        ? Math.min(100, (aaveBorrowUsdc / borrowCapUsdcForStats) * 100)
+        : 0,
+    totalLabel: `${formatMillion(aaveBorrowUsdc)} of ${BORROW_CAP_M.toFixed(2)}M`,
+    totalSubLabel: `${formatMillionUsd(aaveBorrowUsdc)} of $ ${BORROW_CAP_M.toFixed(2)}M`,
+    variableApy: "3.39 %",
+    borrowCap: `${BORROW_CAP_M.toFixed(2)}M`,
+    borrowCapSubLabel: `$ ${BORROW_CAP_M.toFixed(2)}M`,
   };
 
   const utilizationPercent =
@@ -332,7 +375,7 @@ export function LendBorrowMonitorSection() {
                   className="h-8 w-8 shrink-0 rounded-full border border-black/10 bg-white object-contain"
                 />
                 <a
-                  href="https://app.aave.com/reserve-overview/?underlyingAsset=0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48&marketName=proto_mainnet_v3"
+                  href="https://app.aave.com/reserve-overview/?underlyingAsset=0xaf88d065e77c8cc2239327c5edb3a432268e5831&marketName=proto_arbitrum_v3"
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label="Open Aave USDC reserve overview"
@@ -595,6 +638,11 @@ export function LendBorrowMonitorSection() {
     </div>
   );
 }
+
+
+
+
+
 
 
 
