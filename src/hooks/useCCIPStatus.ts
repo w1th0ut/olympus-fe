@@ -28,7 +28,6 @@ export function useCCIPStatus(messageId: Hex | undefined) {
     const checkStatus = async () => {
       try {
         // Read the 'pendingDeposits' mapping from the smart contract
-        // This is a lightweight RPC call (eth_call), not a log scan.
         const result = await publicClient.readContract({
           address: apollosAddresses.ccipReceiver,
           abi: ccipReceiverAbi,
@@ -36,19 +35,24 @@ export function useCCIPStatus(messageId: Hex | undefined) {
           args: [messageId],
         });
 
-        // Result tuple:
-        // [0] messageId
-        // [1] sourceChainSelector
-        // [2] sourceSender
-        // [3] receiver
-        // [4] amount (uint256)
-        // [5] sourceAsset
-        // [6] targetBaseAsset
-        // [7] minShares
-        // [8] executed (bool)
+        // Robust Type Guarding for Viem Return Values (Array vs Object)
+        let amount = BigInt(0);
+        let executed = false;
+        let receiver = "0x0000000000000000000000000000000000000000";
 
-        const amount = result[4];
-        const executed = result[8];
+        // Case 1: Object (Named fields)
+        if (result && typeof result === 'object' && 'amount' in result) {
+            amount = (result as any).amount;
+            executed = (result as any).executed;
+            receiver = (result as any).receiver;
+        } 
+        // Case 2: Array (Tuple)
+        // [0] messageId, [1] chainSelector, [2] sender, [3] receiver, [4] amount, [5] sourceAsset, [6] targetBaseAsset, [7] minShares, [8] executed
+        else if (Array.isArray(result)) {
+            amount = result[4] as bigint;
+            executed = result[8] as boolean;
+            receiver = result[3] as string;
+        }
 
         if (amount > BigInt(0)) {
           if (executed) {
@@ -59,17 +63,15 @@ export function useCCIPStatus(messageId: Hex | undefined) {
           
           setData({
             amount,
-            receiver: result[3],
+            receiver,
             executed
           });
         } else {
-          // If amount is 0, it means the mapping is empty for this messageId
-          // This implies the CCIP message hasn't been processed by the receiver contract yet.
+          // Mapping empty => Message not yet processed by receiver
           setStatus("pending");
         }
       } catch (error) {
         console.error("Error polling CCIP status:", error);
-        // Keep previous status on transient errors
       }
     };
 
@@ -77,7 +79,6 @@ export function useCCIPStatus(messageId: Hex | undefined) {
     checkStatus();
 
     // Poll every 5 seconds
-    // RPC-friendly because it's just reading a specific storage slot
     const intervalId = setInterval(checkStatus, 5_000);
 
     return () => clearInterval(intervalId);

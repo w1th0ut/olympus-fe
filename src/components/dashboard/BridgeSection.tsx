@@ -11,6 +11,7 @@ import {
   useSwitchChain,
   useWaitForTransactionReceipt,
   useWriteContract,
+  usePublicClient,
 } from "wagmi";
 import { aaveAbi, erc20Abi, sourceRouterAbi, uniswapAbi, vaultAbi, ccipReceiverAbi } from "@/lib/apollos-abi";
 import { apollosAddresses, ccipSelectors, vaultMarkets, toPoolKey } from "@/lib/apollos";
@@ -292,6 +293,8 @@ export function BridgeSection() {
     hash: zapTxHash,
   });
 
+  const publicClient = usePublicClient();
+
   const isRouting = activeStep >= 0;
   const isBusy = isSwitchPending || isApprovePending || isApproveConfirming || isBridgePending || isBridgeConfirming || isZapPending || isZapConfirming;
   const isCompleted = activeStep >= 3 && ccipStatus === "success"; // Step 3 completed
@@ -360,7 +363,7 @@ export function BridgeSection() {
           amountRaw,
           ccipSelectors.arbitrumSepolia,
           address,
-          BigInt(0),
+          0n, // Pass 0 minShares at bridge time (dummy), real check happens at Zap
           selectedVault.targetBaseAsset,
         ],
         value: bridgeFeeRaw,
@@ -372,18 +375,29 @@ export function BridgeSection() {
   };
 
   const handleExecuteZap = async () => {
-    if (!messageId || !isConnected) return;
+    if (!messageId || !isConnected || !publicClient) return;
     try {
       if (!isOnArbitrum) {
         await switchChainAsync({ chainId: arbitrumSepolia.id });
         return;
       }
+
+      // Dynamic Gas Fee with 50% Buffer
+      const fees = await publicClient.estimateFeesPerGas();
+      const bufferedMaxFee = fees.maxFeePerGas ? (fees.maxFeePerGas * 150n) / 100n : undefined;
+      const bufferedMaxPriority = fees.maxPriorityFeePerGas ? (fees.maxPriorityFeePerGas * 150n) / 100n : undefined;
+
+      // Pass fresh minShares (0n for Hackathon reliability)
+      const freshMinShares = 0n;
+
       await writeZap({
         address: apollosAddresses.ccipReceiver,
         abi: ccipReceiverAbi,
         functionName: "executeZap",
-        args: [messageId],
+        args: [messageId, freshMinShares], // New parameter order
         chainId: arbitrumSepolia.id,
+        maxFeePerGas: bufferedMaxFee,
+        maxPriorityFeePerGas: bufferedMaxPriority,
       });
     } catch (e) {
       console.error(e);

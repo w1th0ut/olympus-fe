@@ -28,7 +28,7 @@ export const sourceRouterAbi = parseAbi([
 ]);
 
 export const ccipReceiverAbi = parseAbi([
-  "function executeZap(bytes32 messageId) external",
+  "function executeZap(bytes32 messageId, uint256 minShares) external",
   "function pendingDeposits(bytes32) view returns (bytes32 messageId, uint64 sourceChainSelector, address sourceSender, address receiver, uint256 amount, address sourceAsset, address targetBaseAsset, uint256 minShares, bool executed)",
   "event DepositStored(bytes32 indexed messageId, uint64 indexed sourceChainSelector, address indexed receiver, uint256 amount)",
   "event ZapExecuted(bytes32 indexed messageId, address indexed vault, uint256 shares)",
