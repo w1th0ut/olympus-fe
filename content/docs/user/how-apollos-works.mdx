@@ -1,0 +1,134 @@
+﻿---
+title: How Apollos Works
+description: Understand how Apollos builds linearized yield with a 2x delta-neutral vault model.
+---
+
+# How Apollos Works
+
+Apollos lets users allocate to vaults that target linearized yield by combining base-asset exposure with delegated USDC credit.
+
+> At a glance
+>
+> - Deposit a supported asset (`WETH`, `WBTC`, or `LINK`) and receive `afToken` shares.
+> - Apollos Vault borrows delegated `USDC` from **Aave** using **credit delegation**.
+> - User asset + borrowed USDC are deployed into **Uniswap v4** market pools.
+> - Rebalancing logic keeps the position close to its target risk profile as price moves.
+> - A protection layer (LVR hook + workflow controls) is used to reduce toxic flow.
+
+In simple terms: your deposit goes into Apollos Vault, the vault borrows extra USDC from Aave (through delegated credit), then both are used in Uniswap v4 to run the strategy.
+
+---
+
+## ⁉️The Problem: Impermanent Loss
+
+In a standard constant-product AMM (`x * y = k`), liquidity providers are continuously rebalanced between asset and stablecoin.  
+That creates underperformance versus simply holding when price trends strongly in either direction.
+
+### Detailed example
+
+- Start position: `1 ETH ($2,000)` + `$2,000` stablecoins.
+- ETH price doubles from `$2,000` to `$4,000`.
+- A classic AMM LP ends around `0.707 ETH + ~$2,828`.
+- New LP value is about `$5,656` (depending on rounding/fee assumptions).
+- Just holding would be exactly `$6,000`.
+- Result: about `5.7%` IL versus hold before fees.
+
+Some protocols try to offset this with token emissions. That can help short term, but it is usually a subsidy layer, not a structural IL fix.
+
+---
+
+## 💡The Solution: Apollos 2x Delta-Neutral Vault
+
+Apollos targets a linearized profile by pairing user collateral with borrowed USDC and managing leverage at vault level.
+
+1. **Deposit base asset**
+User deposits into an Apollos vault and receives `afToken` shares.
+
+2. **Borrow delegated USDC**
+Apollos Vault draws USDC from **Aave** through a **credit delegation** line assigned to the vault.
+
+3. **Deploy dual-leg liquidity**
+Collateral leg + borrowed USDC leg are deployed into **Uniswap v4** pools via the vault strategy path.
+
+4. **Maintain target profile**
+When price moves, the vault rebalances debt/collateral alignment toward its configured leverage target.
+
+The goal is to reduce IL drag and keep a more stable risk-adjusted growth curve than passive LPing.
+
+### Why this is designed to kill IL drag
+
+In a normal AMM, LP value tends to scale with `sqrt(p)` as price moves (`p = price ratio`).  
+With Apollos' 2x vault structure (collateral leg + delegated USDC debt leg), the net position is engineered to scale closer to `p` around its target regime, not pure `sqrt(p)`.
+
+That is the key intuition: reducing `sqrt(p)` drag is how Apollos targets IL at the root strategy level, instead of relying only on token incentives.
+
+---
+
+## ⬛Comparing Outcomes Across Price Moves
+
+The table below is a simplified illustration (ignores trading fees, borrow cost, and execution friction) to isolate IL behavior:
+
+| Asset move | Just hold (1 ETH + $2,000 USDC) | Classic `x*y=k` LP | Apollos (2x leverage) |
+| --- | --- | --- | --- |
+| -50% | $3,000 | ~$2,828 (about -5.7% vs hold) | $3,000 (+ fees) |
+| 0% | $4,000 | $4,000 | $4,000 (+ fees) |
+| +50% | $5,000 | ~$4,899 (about -2.0% vs hold) | $5,000 (+ fees) |
+| +100% | $6,000 | ~$5,657 (about -5.7% vs hold) | $6,000 (+ fees) |
+
+Practical outcome: users keep fee exposure while reducing directional IL drag versus conventional LP-only positioning.
+
+---
+
+## 📊What Happens When Price Changes?
+
+Apollos continuously tracks leverage, debt ratio, and health factor (`HF = collateral value / debt value` in simplified terms).  
+When deviation grows, the vault can rebalance toward its target profile.
+
+### 📈Asset price goes up (debt too low)
+
+1. **Debt ratio drops below target**  
+   Collateral value rises, while USDC debt is relatively smaller.
+2. **Rebalance signal appears**  
+   Strategy checks show under-leveraged state versus target 2x profile.
+3. **Vault re-levers**  
+   Vault borrows additional delegated USDC from Aave and redeploys into Uniswap v4 strategy legs.
+4. **Back toward target**  
+   Debt/Collateral ratio moves back to the intended range, while HF remains healthy.
+
+### 📉Asset price goes down (debt too high)
+
+1. **Debt ratio climbs above target**  
+   Collateral value falls, but outstanding debt stays.
+2. **Risk control trigger**  
+   Health factor buffer shrinks and the position needs de-leveraging.
+3. **Vault de-levers**  
+   Vault reduces exposure, withdraws part of strategy liquidity, and repays a portion of Aave debt.
+4. **Back toward target**  
+   Position returns to safer leverage and HF buffer improves.
+
+### Where Chainlink workflow fits
+
+- Chainlink workflow observes off-chain risk conditions and supports risk-state updates for protocol protection.
+- The same risk-awareness layer helps keep vault operations aligned with target safety ranges (including HF buffer discipline).
+- In high-volatility windows, protection logic can tighten execution conditions while vault rebalancing keeps leverage in range.
+
+---
+
+## 🛡️Protection Layer: Why Apollos Is Different
+
+- **Restricted direct pool access:** intended flow is through Apollos vaults, not unrestricted direct LP routing.
+- **LVR-aware hook controls:** dynamic fee logic helps defend against toxic/JIT flow.
+- **Workflow-driven operations:** off-chain signals can trigger risk responses for on-chain execution parameters.
+
+---
+
+## ⬜Using Apollos: User Flow
+
+![Apollos User Flow Diagram](/images/Apollos%20User%20Diagram.png)
+
+1. Select an Earn vault (`afWETH`, `afWBTC`, or `afLINK`).
+2. Deposit asset from wallet (or bridge from supported source flow).
+3. Receive `afToken` shares representing vault position.
+4. Vault auto-manages debt + collateral composition and rebalancing.
+5. Withdraw by redeeming `afToken`; underlying position is unwound by vault logic.
+

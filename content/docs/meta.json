@@ -2,10 +2,8 @@
   "title": "Apollos Documentation",
   "pages": [
     "index",
-    "how-it-works",
-    "vaults-and-yield",
-    "bridge-and-zap",
-    "governance-and-risk",
-    "faq"
+    "user",
+    "dev",
+    "faq-brand"
   ]
 }

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { DocsBody, DocsDescription, DocsPage, DocsTitle } from "fumadocs-ui/page";
+import { DocsBody, DocsPage } from "fumadocs-ui/page";
 import { getMDXComponents } from "@/mdx-components";
 import { source } from "@/lib/docs/source";
 
@@ -20,8 +20,6 @@ export default async function DocsSlugPage({ params }: PageProps) {
 
   return (
     <DocsPage toc={page.data.toc} full={page.data.full}>
-      <DocsTitle>{page.data.title}</DocsTitle>
-      {page.data.description ? <DocsDescription>{page.data.description}</DocsDescription> : null}
       <DocsBody>
         <MdxContent components={getMDXComponents()} />
       </DocsBody>
