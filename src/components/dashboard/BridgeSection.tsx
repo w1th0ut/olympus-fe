@@ -74,7 +74,7 @@ const timelineSteps = [
   },
   {
     title: "Ready to Zap",
-    subtext: "Assets arrived. Switch network to claim.",
+    subtext: "Assets arrived. Claim executes on Arbitrum.",
   },
   {
     title: "Yield Activated",
@@ -300,6 +300,11 @@ export function BridgeSection() {
   const isCompleted = activeStep >= 3 && ccipStatus === "success"; // Step 3 completed
   const isFailed = ccipStatus === "failed";
   const isReadyToZap = ccipStatus === "stored";
+  const shouldUseArbitrumForClaim = isReadyToZap || isZapPending || isZapConfirming;
+  const desiredChainId = shouldUseArbitrumForClaim ? arbitrumSepolia.id : baseSepolia.id;
+  const isOnDesiredChain = chainId === desiredChainId;
+  const isWaitingForCCIP = Boolean(messageId || bridgeState.txHash || bridgeTxHash) && !isReadyToZap && !isCompleted;
+  const isAwaitingAutoSwitch = isConnected && !isOnDesiredChain;
 
   // Handle Bridge Success -> Set Step 1 & Save State
   useEffect(() => {
@@ -334,13 +339,28 @@ export function BridgeSection() {
     if (ccipStatus === "success") updateState({ step: 4 }); // Finished
   }, [ccipStatus, activeStep, isLoaded]);
 
+  useEffect(() => {
+    if (!isCompleted || !isOnBase || isSwitchPending || isZapPending || isZapConfirming) {
+      return;
+    }
+
+    clearState();
+    setAmountInput("");
+  }, [clearState, isCompleted, isOnBase, isSwitchPending, isZapConfirming, isZapPending]);
+
+  useEffect(() => {
+    if (!isConnected || isSwitchPending || isOnDesiredChain) {
+      return;
+    }
+
+    void switchChainAsync({ chainId: desiredChainId }).catch(() => {
+      // User can reject wallet switch request.
+    });
+  }, [desiredChainId, isConnected, isOnDesiredChain, isSwitchPending, switchChainAsync]);
+
   const handleRoute = async () => {
-    if (!isConnected || !address || !canRoute || isBusy) return;
+    if (!isConnected || !address || !canRoute || isBusy || !isOnBase) return;
     try {
-      if (!isOnBase) {
-        await switchChainAsync({ chainId: baseSepolia.id });
-        return;
-      }
       if (needsApproval) {
         await writeApprove({
           address: apollosAddresses.baseCcipBnm,
@@ -363,7 +383,7 @@ export function BridgeSection() {
           amountRaw,
           ccipSelectors.arbitrumSepolia,
           address,
-          0n, // Pass 0 minShares at bridge time (dummy), real check happens at Zap
+          BigInt(0), // Pass 0 minShares at bridge time (dummy), real check happens at Zap
           selectedVault.targetBaseAsset,
         ],
         value: bridgeFeeRaw,
@@ -384,11 +404,11 @@ export function BridgeSection() {
 
       // Dynamic Gas Fee with 50% Buffer
       const fees = await publicClient.estimateFeesPerGas();
-      const bufferedMaxFee = fees.maxFeePerGas ? (fees.maxFeePerGas * 150n) / 100n : undefined;
-      const bufferedMaxPriority = fees.maxPriorityFeePerGas ? (fees.maxPriorityFeePerGas * 150n) / 100n : undefined;
+      const bufferedMaxFee = fees.maxFeePerGas ? (fees.maxFeePerGas * BigInt(150)) / BigInt(100) : undefined;
+      const bufferedMaxPriority = fees.maxPriorityFeePerGas ? (fees.maxPriorityFeePerGas * BigInt(150)) / BigInt(100) : undefined;
 
-      // Pass fresh minShares (0n for Hackathon reliability)
-      const freshMinShares = 0n;
+      // Pass fresh minShares (0 for Hackathon reliability)
+      const freshMinShares = BigInt(0);
 
       await writeZap({
         address: apollosAddresses.ccipReceiver,
@@ -411,46 +431,39 @@ export function BridgeSection() {
 
   const getButtonLabel = () => {
     if (!isConnected) return "Connect Wallet";
-    
-    // 1. Critical: Check Network for Zap Phase
-    // If ready to zap but on wrong network, user MUST switch.
-    if (isReadyToZap && !isOnArbitrum) {
-      return "Switch to Arbitrum to Zap";
+
+    if (isAwaitingAutoSwitch) {
+      return desiredChainId === baseSepolia.id
+        ? "Switching to Base Sepolia..."
+        : "Switching to Arbitrum Sepolia...";
     }
 
-    // 2. Waiting State (Passive)
-    const isWaitingForCCIP = (messageId || bridgeState.txHash || bridgeTxHash) && !isReadyToZap;
+    if (isCompleted) {
+      return "Bridge CCIP-BnM and Zap to Earn";
+    }
+
     if (isWaitingForCCIP) {
       return "Waiting for CCIP...";
     }
 
-    // 3. Action: Zap (Execution) - HIGH PRIORITY
-    // If ready to zap and we ARE on Arbitrum, show Zap button immediately.
-    // This prevents falling through to "Switch to Base" logic.
-    if (isReadyToZap && isOnArbitrum) {
+    if (isReadyToZap) {
       return isZapPending || isZapConfirming ? "Executing Zap..." : "Claim & Zap Assets";
     }
 
-    // 4. Critical: Check Network for Bridge Phase
-    // Only ask to switch to Base if we are NOT waiting and NOT ready to zap.
-    if (!isWaitingForCCIP && !isReadyToZap && !isOnBase) {
-      return "Switch to Base";
-    }
-
-    // 5. Busy State (Transaction processing)
     if (isBusy) return "Processing...";
 
-    // 6. Action: Bridge (Approval Logic)
     if (amountRaw > BigInt(0) && needsApproval) {
       return isApprovePending || isApproveConfirming ? "Approving..." : "Approve CCIP-BnM";
     }
     
     return "Bridge CCIP-BnM and Zap to Earn";
   };
-
-  const isNetworkSwitchRequired = 
-    (isReadyToZap && !isOnArbitrum) || 
-    (!messageId && !bridgeState.txHash && !bridgeTxHash && !isOnBase && !isReadyToZap);
+  const isActionEnabled =
+    isConnected &&
+    !isBusy &&
+    (isReadyToZap
+      ? true
+      : !isAwaitingAutoSwitch && isOnBase && !isRouting && canRoute);
 
   return (
     <div className="mt-8">
@@ -559,17 +572,9 @@ export function BridgeSection() {
               if (isReadyToZap) handleExecuteZap();
               else handleRoute();
             }}
-            disabled={
-              !isConnected ||
-              // Disable if busy, UNLESS we just need to switch network (allow clicking to switch)
-              (isBusy && !isNetworkSwitchRequired) ||
-              // Disable if routing (waiting) but not ready to zap yet
-              (isRouting && !isReadyToZap && !isNetworkSwitchRequired) ||
-              // Disable if trying to bridge but balance is low (and not switching)
-              (!isReadyToZap && !canRoute && !isNetworkSwitchRequired)
-            }
+            disabled={!isActionEnabled}
             className={`mt-5 inline-flex w-full items-center justify-center gap-2 rounded-md px-4 py-2 font-syne text-base font-bold shadow-[0px_6px_10px_0px_rgba(0,0,0,0.20)] transition-colors ${
-              ((canRoute && !isBusy) || isReadyToZap || isNetworkSwitchRequired) && isConnected
+              isActionEnabled
                 ? "bg-neutral-800 text-white hover:bg-neutral-700"
                 : "bg-black/10 text-neutral-500 shadow-none"
             }`}
@@ -682,7 +687,7 @@ export function BridgeSection() {
                   <p className="font-syne text-base font-bold text-amber-700">Action Required</p>
                 </div>
                 <p className="mt-1 font-manrope text-sm text-amber-700">
-                  Assets arrived on Arbitrum! Please switch network and click "Claim & Zap" to finish.
+                  Assets arrived on Arbitrum. Wallet will auto-switch for claim and return to Base after success.
                 </p>
               </div>
             ) : null}
