@@ -50,7 +50,7 @@ export function useCCIPStatus(messageId: Hex | undefined) {
         const amount = result[4];
         const executed = result[8];
 
-        if (amount > 0n) {
+        if (amount > BigInt(0)) {
           if (executed) {
             setStatus("success");
           } else {

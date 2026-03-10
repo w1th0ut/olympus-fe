@@ -1,14 +1,18 @@
 "use client";
 
-import { useMemo } from "react";
-import { formatUnits } from "viem";
-import { useReadContracts } from "wagmi";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, ArrowUpRight, ChevronRight, Lock } from "lucide-react";
+import { formatUnits, parseUnits } from "viem";
+import { useAccount, useReadContracts } from "wagmi";
 import { arbitrumSepolia } from "wagmi/chains";
-import { aaveAbi, vaultAbi } from "@/lib/apollos-abi";
-import { apollosAddresses, vaultMarkets } from "@/lib/apollos";
+import { aaveAbi, erc20Abi, vaultAbi } from "@/lib/apollos-abi";
+import { apollosAddresses, type VaultKey, vaultMarkets } from "@/lib/apollos";
 
 const EARN_CAPACITY_AAVE_POOL = "0xA0228A7554ef04EA90a4C4c4995BbC218F7fB4D7" as const;
 const DEFAULT_POOL_BORROW_CAP_USDC = 1_000_000;
+const ARBISCAN_SEPOLIA_BASE = "https://sepolia.arbiscan.io/address";
+const STAKED_VAULT_ENABLED = false;
+const CONVERT_ENABLED = false;
 
 const marketVisuals: Record<string, { apy: string }> = {
   WETH: { apy: "27.12%" },
@@ -16,10 +20,44 @@ const marketVisuals: Record<string, { apy: string }> = {
   LINK: { apy: "27.12%" },
 };
 
+type DetailTab = "auto" | "stake";
+type VaultActionTab = "deposit" | "withdraw" | "convert";
+
+const AF_TOKEN_DECIMALS = 18;
+
+type EarnMarketData = {
+  key: VaultKey;
+  symbol: "WETH" | "WBTC" | "LINK";
+  icon: string;
+  afIcon: string;
+  vaultAddress: `0x${string}`;
+  tokenAddress: `0x${string}`;
+  apy: string;
+  apyValue: number;
+  decimals: number;
+  assetAmount: number;
+  usdPrice: number;
+  usdValue: number;
+  debtUsdc: number;
+  creditLimitUsdc: number;
+  capacityValue: number;
+  capacityLabel: string;
+  remainingCreditUsdc: number;
+  walletBalance: number;
+  tvlPrimary: string;
+  tvlSecondary: string;
+};
+
 function formatUsd(value: number, maximumFractionDigits = 2) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
+    maximumFractionDigits,
+  }).format(value);
+}
+
+function formatNumber(value: number, maximumFractionDigits = 4) {
+  return new Intl.NumberFormat("en-US", {
     maximumFractionDigits,
   }).format(value);
 }
@@ -33,7 +71,42 @@ function formatCompactToken(value: number, symbol: string) {
   return `${compact} ${symbol}`;
 }
 
+function buildYieldSeries(apyValue: number) {
+  const safeApy = Number.isFinite(apyValue) ? apyValue : 20;
+  const monthlyRate = safeApy / 12 / 100;
+  const labels = ["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11", "M12"];
+
+  let cumulative = 100;
+
+  return labels.map((label, index) => {
+    cumulative = cumulative * (1 + monthlyRate * 0.28);
+    const momentum = Math.sin((index + 1) * 0.7) * 0.9 + Math.cos((index + 2) * 0.45) * 0.55;
+    return {
+      label,
+      value: Number((cumulative + momentum).toFixed(2)),
+    };
+  });
+}
+
 export function EarnSection() {
+  const { address, isConnected } = useAccount();
+  const [selectedMarketKey, setSelectedMarketKey] = useState<VaultKey | null>(null);
+  const [detailTab, setDetailTab] = useState<DetailTab>("auto");
+  const [actionTab, setActionTab] = useState<VaultActionTab>("deposit");
+  const [vaultInput, setVaultInput] = useState("");
+
+  useEffect(() => {
+    if (!STAKED_VAULT_ENABLED && detailTab === "stake") {
+      setDetailTab("auto");
+    }
+  }, [detailTab]);
+
+  useEffect(() => {
+    if (!CONVERT_ENABLED && actionTab === "convert") {
+      setActionTab("deposit");
+    }
+  }, [actionTab]);
+
   const contracts = vaultMarkets.flatMap((market) => [
     {
       address: market.vaultAddress,
@@ -62,6 +135,13 @@ export function EarnSection() {
       args: [market.vaultAddress, apollosAddresses.usdc],
       chainId: arbitrumSepolia.id,
     },
+    {
+      address: market.tokenAddress,
+      abi: erc20Abi,
+      functionName: "balanceOf" as const,
+      args: [address ?? "0x0000000000000000000000000000000000000000"],
+      chainId: arbitrumSepolia.id,
+    },
   ]);
 
   const { data, isLoading } = useReadContracts({
@@ -72,45 +152,55 @@ export function EarnSection() {
     },
   });
 
-  const earnMarkets = useMemo(() => {
+  const earnMarkets = useMemo<EarnMarketData[]>(() => {
     return vaultMarkets.map((market, index) => {
-      const offset = index * 4;
-      const totalAssets = (data?.[offset]?.result as bigint | undefined) ?? BigInt(0);
+      const offset = index * 5;
+      const totalAssetsRaw = (data?.[offset]?.result as bigint | undefined) ?? BigInt(0);
       const rawPrice = (data?.[offset + 1]?.result as bigint | undefined) ?? BigInt(0);
       const rawDebt = (data?.[offset + 2]?.result as bigint | undefined) ?? BigInt(0);
       const rawCreditLimit = (data?.[offset + 3]?.result as bigint | undefined) ?? BigInt(0);
+      const walletBalanceRaw = (data?.[offset + 4]?.result as bigint | undefined) ?? BigInt(0);
 
-      const assetAmount = Number(formatUnits(totalAssets, market.decimals));
+      const assetAmount = Number(formatUnits(totalAssetsRaw, market.decimals));
       const usdPrice = Number(formatUnits(rawPrice, 8));
       const usdValue = assetAmount * usdPrice;
       const debtUsdc = Number(formatUnits(rawDebt, 6));
       const creditLimitUsdc = Number(formatUnits(rawCreditLimit, 6));
       const maxBorrowUsdc = creditLimitUsdc > 0 ? creditLimitUsdc : DEFAULT_POOL_BORROW_CAP_USDC;
-      const capacityValue = Math.min(100, (debtUsdc / maxBorrowUsdc) * 100);
-      const capacity =
+      const capacityValue = maxBorrowUsdc > 0 ? Math.min(100, (debtUsdc / maxBorrowUsdc) * 100) : 0;
+      const capacityLabel =
         capacityValue >= 99.995 ? "100% (FILLED)" : `${capacityValue.toFixed(3)}%`;
-
-      const visual = marketVisuals[market.symbol];
+      const apy = marketVisuals[market.symbol].apy;
+      const apyValue = Number.parseFloat(apy.replace("%", ""));
 
       return {
+        key: market.key,
         symbol: market.symbol,
         icon: market.icon,
-        apy: visual.apy,
+        afIcon: market.afIcon,
+        vaultAddress: market.vaultAddress,
+        tokenAddress: market.tokenAddress,
+        apy,
+        apyValue: Number.isFinite(apyValue) ? apyValue : 0,
+        decimals: market.decimals,
+        assetAmount,
+        usdPrice,
+        usdValue,
+        debtUsdc,
+        creditLimitUsdc: maxBorrowUsdc,
+        capacityValue,
+        capacityLabel,
+        remainingCreditUsdc: Math.max(0, maxBorrowUsdc - debtUsdc),
+        walletBalance: Number(formatUnits(walletBalanceRaw, market.decimals)),
         tvlPrimary: formatCompactToken(assetAmount, market.symbol),
         tvlSecondary: formatUsd(usdValue, 0),
-        capacity,
-        capacityValue,
-        usdValue,
       };
     });
   }, [data]);
 
   const earnStats = useMemo(() => {
     const totalTvl = earnMarkets.reduce((sum, market) => sum + market.usdValue, 0);
-    const highestYield = earnMarkets.reduce((max, market) => {
-      const parsed = Number.parseFloat(market.apy.replace("%", ""));
-      return Number.isFinite(parsed) ? Math.max(max, parsed) : max;
-    }, 0);
+    const highestYield = earnMarkets.reduce((max, market) => Math.max(max, market.apyValue), 0);
 
     return [
       { label: "Total TVL", value: isLoading ? "Loading..." : formatUsd(totalTvl, 0) },
@@ -118,6 +208,622 @@ export function EarnSection() {
       { label: "Active markets", value: String(earnMarkets.length) },
     ];
   }, [earnMarkets, isLoading]);
+
+  const selectedMarket = useMemo(
+    () => earnMarkets.find((market) => market.key === selectedMarketKey) ?? null,
+    [earnMarkets, selectedMarketKey],
+  );
+
+  const yieldSeries = useMemo(
+    () => buildYieldSeries(selectedMarket?.apyValue ?? 0),
+    [selectedMarket?.apyValue],
+  );
+
+  const chartGeometry = useMemo(() => {
+    const width = 780;
+    const height = 250;
+    const padding = 20;
+    const values = yieldSeries.map((item) => item.value);
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+    const valueRange = Math.max(1, maxValue - minValue);
+    const pointsDivider = Math.max(1, yieldSeries.length - 1);
+
+    const points = yieldSeries.map((item, index) => {
+      const x = padding + (index * (width - padding * 2)) / pointsDivider;
+      const ratio = (item.value - minValue) / valueRange;
+      const y = height - padding - ratio * (height - padding * 2);
+      return { ...item, x, y };
+    });
+
+    const linePath = points
+      .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+      .join(" ");
+    const areaPath = `${linePath} L ${points[points.length - 1].x} ${height - padding} L ${points[0].x} ${height - padding} Z`;
+
+    return { width, height, padding, points, linePath, areaPath };
+  }, [yieldSeries]);
+
+  const normalizedNetAssetUsd = selectedMarket
+    ? selectedMarket.usdValue > 0
+      ? selectedMarket.usdValue
+      : selectedMarket.debtUsdc > 0
+        ? selectedMarket.debtUsdc
+        : 0
+    : 0;
+  const totalCollateralUsd = normalizedNetAssetUsd + (selectedMarket?.debtUsdc ?? 0);
+  const healthFactor =
+    selectedMarket && selectedMarket.debtUsdc > 0
+      ? totalCollateralUsd / selectedMarket.debtUsdc
+      : null;
+  const leverageCurrent =
+    selectedMarket && normalizedNetAssetUsd > 0
+      ? (normalizedNetAssetUsd + selectedMarket.debtUsdc) / normalizedNetAssetUsd
+      : 1;
+
+  const vaultAmount = Number.parseFloat(vaultInput);
+  const parsedVaultAmount = Number.isFinite(vaultAmount) && vaultAmount > 0 ? vaultAmount : 0;
+
+  const inputDecimals = selectedMarket
+    ? detailTab === "auto"
+      ? actionTab === "deposit"
+        ? selectedMarket.decimals
+        : AF_TOKEN_DECIMALS
+      : AF_TOKEN_DECIMALS
+    : AF_TOKEN_DECIMALS;
+
+  const inputAmountRaw = useMemo(() => {
+    if (!selectedMarket || parsedVaultAmount <= 0) return BigInt(0);
+    try {
+      return parseUnits(parsedVaultAmount.toString(), inputDecimals);
+    } catch {
+      return BigInt(0);
+    }
+  }, [selectedMarket, parsedVaultAmount, inputDecimals]);
+
+  const oneBaseUnitRaw = useMemo(() => {
+    if (!selectedMarket) return BigInt(0);
+    return BigInt(10) ** BigInt(selectedMarket.decimals);
+  }, [selectedMarket]);
+
+  const previewDepositArg =
+    detailTab === "auto" && actionTab === "deposit" ? inputAmountRaw : BigInt(0);
+
+  const { data: detailReads } = useReadContracts({
+    contracts:
+      selectedMarket === null
+        ? []
+        : [
+            {
+              address: selectedMarket.vaultAddress,
+              abi: vaultAbi,
+              functionName: "previewDeposit" as const,
+              args: [previewDepositArg],
+              chainId: arbitrumSepolia.id,
+            },
+            {
+              address: selectedMarket.vaultAddress,
+              abi: vaultAbi,
+              functionName: "getSharePrice" as const,
+              chainId: arbitrumSepolia.id,
+            },
+            {
+              address: selectedMarket.vaultAddress,
+              abi: vaultAbi,
+              functionName: "balanceOf" as const,
+              args: [address ?? "0x0000000000000000000000000000000000000000"],
+              chainId: arbitrumSepolia.id,
+            },
+            {
+              address: selectedMarket.vaultAddress,
+              abi: vaultAbi,
+              functionName: "previewDeposit" as const,
+              args: [oneBaseUnitRaw],
+              chainId: arbitrumSepolia.id,
+            },
+          ],
+    allowFailure: true,
+    query: {
+      enabled: Boolean(selectedMarket),
+      refetchInterval: 15000,
+    },
+  });
+
+  const inputPreviewSharesRaw = (detailReads?.[0]?.result as bigint | undefined) ?? BigInt(0);
+  const sharePriceRaw = (detailReads?.[1]?.result as bigint | undefined) ?? BigInt(0);
+  const afWalletBalanceRaw = (detailReads?.[2]?.result as bigint | undefined) ?? BigInt(0);
+  const oneBasePreviewSharesRaw = (detailReads?.[3]?.result as bigint | undefined) ?? BigInt(0);
+
+  const afWalletBalance = Number(formatUnits(afWalletBalanceRaw, AF_TOKEN_DECIMALS));
+  const basePerAfToken =
+    selectedMarket && sharePriceRaw > BigInt(0)
+      ? Number(formatUnits(sharePriceRaw, selectedMarket.decimals))
+      : 0;
+  const afTokensPerBase =
+    oneBasePreviewSharesRaw > BigInt(0)
+      ? Number(formatUnits(oneBasePreviewSharesRaw, AF_TOKEN_DECIMALS))
+      : basePerAfToken > 0
+        ? 1 / basePerAfToken
+        : 0;
+
+  const autoWithdrawOutRaw =
+    selectedMarket && inputAmountRaw > BigInt(0) && sharePriceRaw > BigInt(0)
+      ? (inputAmountRaw * sharePriceRaw) / (BigInt(10) ** BigInt(AF_TOKEN_DECIMALS))
+      : BigInt(0);
+
+  const estimatedOutputAmount = selectedMarket
+    ? detailTab === "auto"
+      ? actionTab === "deposit"
+        ? Number(formatUnits(inputPreviewSharesRaw, AF_TOKEN_DECIMALS))
+        : actionTab === "withdraw"
+          ? Number(formatUnits(autoWithdrawOutRaw, selectedMarket.decimals))
+          : parsedVaultAmount
+      : parsedVaultAmount
+    : 0;
+
+  const estimatedOutputTitle = detailTab === "auto"
+    ? actionTab === "withdraw"
+      ? "To wallet"
+      : "To yield bearing vault"
+    : "To staked vault";
+
+  const estimatedOutputSymbol = selectedMarket
+    ? detailTab === "auto"
+      ? actionTab === "deposit"
+        ? selectedMarket.key
+        : actionTab === "withdraw"
+          ? selectedMarket.symbol
+          : `s${selectedMarket.key}`
+      : actionTab === "withdraw"
+        ? selectedMarket.key
+        : `s${selectedMarket.key}`
+    : "";
+
+  const estimatedOutputIcon = selectedMarket
+    ? detailTab === "auto"
+      ? actionTab === "withdraw"
+        ? selectedMarket.icon
+        : selectedMarket.afIcon
+      : selectedMarket.afIcon
+    : "";
+
+  const sourceTokenSymbol = selectedMarket
+    ? detailTab === "auto"
+      ? actionTab === "deposit"
+        ? selectedMarket.symbol
+        : selectedMarket.key
+      : actionTab === "withdraw"
+        ? `s${selectedMarket.key}`
+        : selectedMarket.key
+      : "";
+
+  const sourceTokenIcon = selectedMarket
+    ? detailTab === "auto"
+      ? actionTab === "deposit"
+        ? selectedMarket.icon
+        : selectedMarket.afIcon
+      : actionTab === "withdraw"
+        ? selectedMarket.afIcon
+        : selectedMarket.afIcon
+    : "";
+
+  const sourcePanelTitle = detailTab === "auto"
+    ? actionTab === "withdraw"
+      ? "From yield bearing vault"
+      : "From wallet"
+    : "From wallet";
+
+  const destinationTokenSymbol = estimatedOutputSymbol;
+
+  const sourceTokenBalance = selectedMarket
+    ? detailTab === "auto"
+      ? actionTab === "deposit"
+        ? selectedMarket.walletBalance
+        : afWalletBalance
+      : actionTab === "withdraw"
+        ? 0
+        : afWalletBalance
+    : 0;
+
+  const canUseMax = sourceTokenBalance > 0;
+  const canSubmitAction =
+    isConnected &&
+    parsedVaultAmount > 0 &&
+    detailTab === "auto" &&
+    actionTab !== "convert" &&
+    sourceTokenBalance >= parsedVaultAmount;
+
+  const aiLogs = [
+    "[Gemini] Volatility spike detected from CEX orderbooks.",
+    "[Workflow] Raising hook fee to 0.50% to reduce toxic flow.",
+    "[LVR Guard] JIT pattern score elevated, protection remains active.",
+    "[Engine] Delta exposure rebalanced back to target 2.0x profile.",
+  ];
+
+  if (selectedMarket) {
+    return (
+      <div className="mt-8 space-y-6">
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedMarketKey(null);
+            setDetailTab("auto");
+            setActionTab("deposit");
+            setVaultInput("");
+          }}
+          className="inline-flex items-center gap-2 rounded-md border border-black/15 bg-white px-3 py-1.5 font-syne text-sm font-bold text-neutral-900 shadow-[0px_6px_10px_0px_rgba(0,0,0,0.10)] transition-colors hover:bg-black/[0.03]"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Vault List
+        </button>
+
+        <section className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="flex items-center gap-3">
+                <img src={selectedMarket.icon} alt="" className="h-12 w-12 object-contain" />
+                <div>
+                  <h3 className="font-syne text-2xl font-bold text-neutral-950">
+                    Apollos {selectedMarket.symbol} Vault
+                  </h3>
+                  <a
+                    href={`${ARBISCAN_SEPOLIA_BASE}/${selectedMarket.vaultAddress}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-flex items-center gap-1 break-all font-manrope text-sm text-neutral-600 transition-colors hover:text-neutral-900"
+                  >
+                    {selectedMarket.vaultAddress}
+                    <ArrowUpRight className="h-3 w-3 shrink-0" />
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-black/10 bg-black/[0.03] px-4 py-3">
+              <p className="font-manrope text-xs text-neutral-600">Oracle Price</p>
+              <div className="mt-1 flex items-center gap-2">
+                <img src="/icons/Logo-Chainlink.png" alt="Chainlink" className="h-5 w-5 object-contain" />
+                <p className="font-syne text-2xl font-bold text-neutral-950">
+                  {formatUsd(selectedMarket.usdPrice, 2)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid grid-cols-1 items-stretch gap-4 2xl:grid-cols-[minmax(0,1.85fr)_minmax(0,1fr)]">
+          <div className="flex h-full flex-col gap-4">
+            <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-syne text-lg font-bold text-neutral-950">Cumulative Yield Growth</h3>
+              </div>
+
+              <div className="mt-4 overflow-x-auto">
+                <div className="min-w-[700px]">
+                  <svg viewBox={`0 0 ${chartGeometry.width} ${chartGeometry.height}`} className="w-full">
+                    {[0, 1, 2, 3].map((index) => {
+                      const y =
+                        chartGeometry.padding +
+                        (index * (chartGeometry.height - chartGeometry.padding * 2)) / 3;
+                      return (
+                        <line
+                          key={index}
+                          x1={chartGeometry.padding}
+                          x2={chartGeometry.width - chartGeometry.padding}
+                          y1={y}
+                          y2={y}
+                          stroke="rgba(15,23,42,0.12)"
+                          strokeDasharray="4 6"
+                        />
+                      );
+                    })}
+
+                    <path d={chartGeometry.areaPath} fill="rgba(16,185,129,0.15)" />
+                    <path d={chartGeometry.linePath} fill="none" stroke="#0f172a" strokeWidth="3" />
+
+                    {chartGeometry.points.map((point) => (
+                      <circle key={point.label} cx={point.x} cy={point.y} r="4.5" fill="#111111" />
+                    ))}
+                  </svg>
+
+                  <div
+                    className="mt-2 grid gap-1"
+                    style={{ gridTemplateColumns: `repeat(${yieldSeries.length}, minmax(0, 1fr))` }}
+                  >
+                    {yieldSeries.map((item) => (
+                      <div key={item.label} className="text-center">
+                        <p className="font-manrope text-[11px] text-neutral-500">{item.label}</p>
+                        <p className="font-syne text-xs font-bold text-neutral-900">{item.value.toFixed(1)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
+              <h3 className="font-syne text-lg font-bold text-neutral-950">Delta Neutral Composition</h3>
+              <p className="mt-1 font-manrope text-sm text-neutral-600">
+                Long base asset balanced by delegated USDC short debt.
+              </p>
+
+              <div className="mt-4 h-4 w-full overflow-hidden rounded-full bg-black/10">
+                <div className="h-full w-3/5 bg-neutral-900" />
+                <div className="-mt-4 ml-[60%] h-4 w-2/5 bg-neutral-600" />
+              </div>
+
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border border-black/15 bg-neutral-100 px-3 py-2">
+                  <p className="font-manrope text-xs text-neutral-700">Long {selectedMarket.symbol} (60%)</p>
+                  <p className="font-syne text-lg font-bold text-neutral-950">
+                    {formatUsd(totalCollateralUsd * 0.6, 2)}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-black/15 bg-neutral-200 px-3 py-2">
+                  <p className="font-manrope text-xs text-neutral-700">Short Debt USDC (40%)</p>
+                  <p className="font-syne text-lg font-bold text-neutral-900">
+                    {formatUsd(totalCollateralUsd * 0.4, 2)}
+                  </p>
+                </div>
+              </div>
+            </article>
+
+            <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
+              <h3 className="font-syne text-lg font-bold text-neutral-950">AI Guardian Logs</h3>
+              <div className="mt-3 space-y-2 rounded-lg border border-black/10 bg-black/[0.03] p-3">
+                {aiLogs.map((log, index) => (
+                  <p key={index} className="font-mono text-xs text-emerald-700">
+                    {`> ${log}`}
+                  </p>
+                ))}
+              </div>
+            </article>
+          </div>
+
+          <div className="flex h-full flex-col gap-4">
+            <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
+              <div className="grid grid-cols-2 rounded-xl border border-black/10 bg-black/[0.03] p-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDetailTab("auto");
+                    setActionTab("deposit");
+                    setVaultInput("");
+                  }}
+                  className={`rounded-lg px-3 py-2 text-sm font-manrope font-semibold transition-colors ${
+                    detailTab === "auto"
+                      ? "bg-white text-neutral-950 shadow-[0px_4px_8px_0px_rgba(0,0,0,0.12)]"
+                      : "text-neutral-600 hover:bg-white/70"
+                  }`}
+                >
+                  Yield Bearing Vault
+                </button>
+                <button
+                  type="button"
+                  disabled={!STAKED_VAULT_ENABLED}
+                  onClick={() => {
+                    if (!STAKED_VAULT_ENABLED) return;
+                    setDetailTab("stake");
+                    setActionTab("deposit");
+                    setVaultInput("");
+                  }}
+                  className={`rounded-lg px-3 py-2 text-sm font-manrope font-semibold transition-colors ${
+                    detailTab === "stake"
+                      ? "bg-white/80 text-neutral-700 shadow-[0px_4px_8px_0px_rgba(0,0,0,0.10)]"
+                      : "text-neutral-500 hover:bg-white/60"
+                  }`}
+                >
+                  Staked Vault
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-4">
+                <div className="grid grid-cols-3 rounded-xl border border-black/10 bg-black/[0.03] p-1">
+                  {(["deposit", "withdraw", "convert"] as const).map((mode) => {
+                    const isDisabled = mode === "convert" && !CONVERT_ENABLED;
+                    const label =
+                      mode === "deposit" ? "Deposit" : mode === "withdraw" ? "Withdraw" : "Convert";
+
+                    return (
+                    <button
+                      key={mode}
+                      type="button"
+                      disabled={isDisabled}
+                      onClick={() => {
+                        if (isDisabled) return;
+                        setActionTab(mode);
+                        setVaultInput("");
+                      }}
+                      className={`rounded-lg px-3 py-2 text-sm font-manrope font-semibold transition-colors ${
+                        actionTab === mode
+                          ? "bg-white text-neutral-950 shadow-[0px_4px_8px_0px_rgba(0,0,0,0.12)]"
+                          : isDisabled
+                            ? "cursor-not-allowed text-neutral-400"
+                            : "text-neutral-600 hover:bg-white/70"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                    );
+                  })}
+                </div>
+
+                <div>
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1.2fr]">
+                    <div className="rounded-lg border border-black/10 px-3 py-2">
+                      <p className="font-manrope text-xs text-neutral-500">{sourcePanelTitle}</p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <img src={sourceTokenIcon} alt="" className="h-5 w-5 object-contain" />
+                        <p className="font-syne text-2xl font-bold text-neutral-950">{sourceTokenSymbol}</p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-black/10 px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-manrope text-xs text-neutral-500">Amount</p>
+                        <button
+                          type="button"
+                          disabled={!canUseMax}
+                          onClick={() => setVaultInput(sourceTokenBalance.toString())}
+                          className={`rounded px-2 py-0.5 text-xs font-bold ${
+                            canUseMax
+                              ? "bg-neutral-900 font-syne text-white"
+                              : "cursor-not-allowed bg-black/10 font-manrope text-neutral-400"
+                          }`}
+                        >
+                          MAX
+                        </button>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={vaultInput}
+                        onChange={(event) => setVaultInput(event.target.value)}
+                        placeholder="0.00"
+                        className="mt-1 w-full bg-transparent font-syne text-3xl font-bold text-neutral-950 outline-none placeholder:text-neutral-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <p className="font-manrope text-xs text-neutral-500">
+                      Wallet balance: {formatNumber(sourceTokenBalance, 6)} {sourceTokenSymbol}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-black/10 bg-black/[0.02] p-3">
+                  <div>
+                    <p className="font-manrope text-xs text-neutral-600">{estimatedOutputTitle}</p>
+                    <div className="mt-1 flex items-center gap-2">
+                      <img src={estimatedOutputIcon} alt="" className="h-5 w-5 object-contain" />
+                      <p className="font-syne text-2xl font-bold text-neutral-950">
+                        {formatNumber(estimatedOutputAmount, 6)} {destinationTokenSymbol}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-2 space-y-1">
+                    {actionTab === "withdraw" ? (
+                      <p className="font-manrope text-xs text-neutral-600">
+                        1 {selectedMarket.key} = {formatNumber(basePerAfToken, 6)} {selectedMarket.symbol}
+                      </p>
+                    ) : (
+                      <p className="font-manrope text-xs text-neutral-600">
+                        1 {selectedMarket.symbol} = {formatNumber(afTokensPerBase, 6)} {selectedMarket.key}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {detailTab === "auto" ? (
+                  <div className="rounded-lg border border-black/10 bg-black/[0.03] p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-manrope text-xs text-neutral-600">Capacity Utilization</p>
+                      <p className="font-syne text-xs font-bold text-neutral-950">{selectedMarket.capacityLabel}</p>
+                    </div>
+                    <div className="mt-2 h-2 w-full rounded-full bg-black/15">
+                      <div
+                        className="h-2 rounded-full bg-neutral-950"
+                        style={{ width: `${selectedMarket.capacityValue}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 font-manrope text-xs text-neutral-600">
+                      Remaining capacity: {formatUsd(selectedMarket.remainingCreditUsdc, 0)}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-black/20 bg-black/[0.02] p-3">
+                    <div className="flex items-center gap-2">
+                      <Lock className="h-4 w-4 text-neutral-700" />
+                      <p className="font-manrope text-xs text-neutral-600">
+                        Staked vault execution is currently roadmap mode.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  disabled={detailTab !== "auto" || !canSubmitAction}
+                  className={`w-full rounded-md px-4 py-2 font-syne text-base font-bold ${
+                    detailTab === "auto" && canSubmitAction
+                      ? "bg-neutral-900 text-white shadow-[0px_6px_10px_0px_rgba(0,0,0,0.20)]"
+                      : "cursor-not-allowed bg-black/10 text-neutral-500"
+                  }`}
+                >
+                  {detailTab === "auto"
+                    ? actionTab === "deposit"
+                      ? "Deposit"
+                      : actionTab === "withdraw"
+                        ? "Withdraw"
+                        : "Convert (Soon)"
+                    : "Launching Q3 2026"}
+                </button>
+              </div>
+            </article>
+
+            <article className="flex flex-1 flex-col rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
+              <h3 className="font-syne text-lg font-bold text-neutral-950">Vault Health Monitor</h3>
+              <dl className="mt-4 space-y-3">
+                <div className="flex items-center justify-between rounded-lg border border-black/10 px-3 py-2">
+                  <dt className="font-manrope text-sm text-neutral-600">Health Factor</dt>
+                  <dd className="font-syne text-xl font-bold text-emerald-600">
+                    {healthFactor === null ? "\u221E" : healthFactor.toFixed(2)}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between rounded-lg border border-black/10 px-3 py-2">
+                  <dt className="font-manrope text-sm text-neutral-600">Current Leverage</dt>
+                  <dd className="font-syne text-xl font-bold text-neutral-950">{leverageCurrent.toFixed(2)}x</dd>
+                </div>
+                <div className="flex items-center justify-between rounded-lg border border-black/10 px-3 py-2">
+                  <dt className="font-manrope text-sm text-neutral-600">LVR Status</dt>
+                  <dd className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 font-syne text-sm font-bold text-emerald-700">
+                    ACTIVE
+                  </dd>
+                </div>
+              </dl>
+            </article>
+
+          </div>
+        </section>
+
+        <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
+          <h3 className="font-syne text-lg font-bold text-neutral-950">Contract Info</h3>
+          <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+            <a
+              href={`${ARBISCAN_SEPOLIA_BASE}/${selectedMarket.vaultAddress}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-between rounded-lg border border-black/10 px-3 py-2 font-manrope text-sm text-neutral-700 transition-colors hover:bg-black/[0.03]"
+            >
+              Vault Contract
+              <ArrowUpRight className="h-4 w-4 text-neutral-500" />
+            </a>
+            <a
+              href={`${ARBISCAN_SEPOLIA_BASE}/${apollosAddresses.router}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-between rounded-lg border border-black/10 px-3 py-2 font-manrope text-sm text-neutral-700 transition-colors hover:bg-black/[0.03]"
+            >
+              Strategy Router
+              <ArrowUpRight className="h-4 w-4 text-neutral-500" />
+            </a>
+            <a
+              href={`${ARBISCAN_SEPOLIA_BASE}/${EARN_CAPACITY_AAVE_POOL}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-between rounded-lg border border-black/10 px-3 py-2 font-manrope text-sm text-neutral-700 transition-colors hover:bg-black/[0.03]"
+            >
+              Credit Source
+              <ArrowUpRight className="h-4 w-4 text-neutral-500" />
+            </a>
+          </div>
+        </article>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-8 space-y-6">
@@ -136,17 +842,27 @@ export function EarnSection() {
       <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
         <div className="overflow-x-auto">
           <div className="min-w-[680px]">
-            <div className="grid grid-cols-[2fr_1fr_1.2fr_1fr] px-4 pb-2 text-xs font-syne font-bold text-neutral-700">
+            <div className="grid grid-cols-[2fr_1fr_1.2fr_1fr_0.4fr] px-4 pb-2 text-xs font-syne font-bold text-neutral-700">
               <span>Asset</span>
               <span>APY</span>
               <span>TVL</span>
               <span>Capacity</span>
+              <span />
             </div>
             <div className="h-px bg-black/20" />
 
             {earnMarkets.map((market) => (
-              <div key={market.symbol}>
-                <div className="grid grid-cols-[2fr_1fr_1.2fr_1fr] items-center px-4 py-4 transition-colors cursor-pointer hover:bg-black/[0.03]">
+              <div key={market.key}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedMarketKey(market.key);
+                    setDetailTab("auto");
+                    setActionTab("deposit");
+                    setVaultInput("");
+                  }}
+                  className="grid w-full grid-cols-[2fr_1fr_1.2fr_1fr_0.4fr] items-center px-4 py-4 text-left transition-colors hover:bg-black/[0.03]"
+                >
                   <div className="flex items-center gap-3">
                     <img src={market.icon} alt="" className="h-8 w-8 object-contain" />
                     <span className="font-syne text-lg font-bold text-neutral-950">{market.symbol}</span>
@@ -160,7 +876,7 @@ export function EarnSection() {
                   </div>
 
                   <div>
-                    <span className="font-syne text-lg font-bold text-neutral-950">{market.capacity}</span>
+                    <span className="font-syne text-lg font-bold text-neutral-950">{market.capacityLabel}</span>
                     <div className="mt-2 h-2 w-full max-w-[120px] rounded-full bg-black/20">
                       <div
                         className="h-2 rounded-full bg-neutral-950"
@@ -168,7 +884,11 @@ export function EarnSection() {
                       />
                     </div>
                   </div>
-                </div>
+
+                  <div className="flex justify-end">
+                    <ChevronRight className="h-5 w-5 text-neutral-500" />
+                  </div>
+                </button>
                 <div className="h-px bg-black/20" />
               </div>
             ))}
@@ -178,4 +898,3 @@ export function EarnSection() {
     </div>
   );
 }
-
