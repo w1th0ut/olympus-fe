@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { formatUnits } from "viem";
 import { useAccount, useReadContracts } from "wagmi";
-import { aaveAbi, uniswapAbi, vaultAbi } from "@/lib/apollos-abi";
+import { aaveAbi, erc20Abi, uniswapAbi, vaultAbi } from "@/lib/apollos-abi";
 import { apollosAddresses, toPoolKey, vaultMarkets } from "@/lib/apollos";
 
 const recentActivities = [
@@ -63,6 +63,33 @@ function formatNumber(value: number, maximumFractionDigits = 4) {
     maximumFractionDigits,
   }).format(value);
 }
+
+const walletAssets = [
+  {
+    symbol: "WETH",
+    icon: "/icons/Logo-WETH.png",
+    address: apollosAddresses.weth,
+    decimals: 18,
+  },
+  {
+    symbol: "WBTC",
+    icon: "/icons/Logo-WBTC.png",
+    address: apollosAddresses.wbtc,
+    decimals: 8,
+  },
+  {
+    symbol: "LINK",
+    icon: "/icons/Logo-LINK.png",
+    address: apollosAddresses.link,
+    decimals: 18,
+  },
+  {
+    symbol: "USDC",
+    icon: "/icons/Logo-USDC.png",
+    address: apollosAddresses.usdc,
+    decimals: 6,
+  },
+] as const;
 
 
 export function MyBalancesSection() {
@@ -130,6 +157,20 @@ export function MyBalancesSection() {
     },
   });
 
+  const { data: walletBalancesData } = useReadContracts({
+    contracts: walletAssets.map((asset) => ({
+      address: asset.address,
+      abi: erc20Abi,
+      functionName: "balanceOf" as const,
+      args: [address ?? "0x0000000000000000000000000000000000000000"],
+    })),
+    allowFailure: true,
+    query: {
+      enabled: Boolean(address),
+      refetchInterval: 15000,
+    },
+  });
+
   const activeVaultPositions = useMemo(() => {
     return vaultMarkets
       .map((market, index) => {
@@ -159,59 +200,24 @@ export function MyBalancesSection() {
 
   const portfolioValue = activeVaultPositions.reduce((sum, position) => sum + position.valueUsd, 0);
 
-  const usdcPriceRaw = (data?.[0]?.result as bigint | undefined) ?? BigInt(100000000);
-  const usdcPrice = Number(formatUnits(usdcPriceRaw, 8));
+  const walletBalances = useMemo(
+    () =>
+      walletAssets.map((asset, index) => {
+        const raw = (walletBalancesData?.[index]?.result as bigint | undefined) ?? BigInt(0);
+        const balance = Number(formatUnits(raw, asset.decimals));
+        const fractionDigits = asset.symbol === "USDC" ? 2 : 4;
 
-  const portfolioHealth = useMemo(() => {
-    let totalCollateralUsd = 0;
-    let totalDebtUsd = 0;
-
-    vaultMarkets.forEach((market, index) => {
-      const offset = 1 + index * 6;
-      const debtRaw = (data?.[offset + 3]?.result as bigint | undefined) ?? BigInt(0);
-      const totalAssetsRaw = (data?.[offset + 4]?.result as bigint | undefined) ?? BigInt(0);
-      const poolState = (data?.[offset + 5]?.result as
-        | { reserve0: bigint; reserve1: bigint }
-        | undefined);
-      const oraclePriceRaw = (data?.[offset + 2]?.result as bigint | undefined) ?? BigInt(0);
-
-      const debtUsdc = Number(formatUnits(debtRaw, 6));
-      const marketNetAssetAmount = Number(formatUnits(totalAssetsRaw, market.decimals));
-
-      const isBaseCurrency0 =
-        market.tokenAddress.toLowerCase() < apollosAddresses.usdc.toLowerCase();
-      const reserveBaseRaw = isBaseCurrency0
-        ? (poolState?.reserve0 ?? BigInt(0))
-        : (poolState?.reserve1 ?? BigInt(0));
-      const reserveUsdcRaw = isBaseCurrency0
-        ? (poolState?.reserve1 ?? BigInt(0))
-        : (poolState?.reserve0 ?? BigInt(0));
-      const reserveBaseAmount = Number(formatUnits(reserveBaseRaw, market.decimals));
-      const reserveUsdcAmount = Number(formatUnits(reserveUsdcRaw, 6));
-      const poolPriceUsd = reserveBaseAmount > 0 ? reserveUsdcAmount / reserveBaseAmount : 0;
-      const oraclePriceUsd = Number(formatUnits(oraclePriceRaw, 8));
-      const marketPriceUsd = poolPriceUsd > 0 ? poolPriceUsd : oraclePriceUsd;
-
-      const debtUsd = debtUsdc * usdcPrice;
-      const netAssetUsd = marketNetAssetAmount * marketPriceUsd;
-      const collateralUsd = netAssetUsd + debtUsd;
-
-      totalDebtUsd += debtUsd;
-      totalCollateralUsd += collateralUsd;
-    });
-
-    if (totalDebtUsd <= 0) {
-      return null;
-    }
-
-    return Math.max(0, totalCollateralUsd / totalDebtUsd);
-  }, [data, usdcPrice]);
+        return {
+          ...asset,
+          display: isConnected ? formatNumber(balance, fractionDigits) : "--",
+        };
+      }),
+    [walletBalancesData, isConnected],
+  );
 
   const wealthSummary = {
     portfolioValue: isConnected ? formatCurrency(portfolioValue, 2) : "$0.00",
     lifetimeEarnings: "$0.00",
-    averageApy: "12.5%",
-    averageHealth: portfolioHealth !== null ? portfolioHealth.toFixed(2) : "\u221E",
   };
 
   return (
@@ -220,7 +226,7 @@ export function MyBalancesSection() {
         <h2 className="font-syne text-xl font-bold text-neutral-950 sm:text-2xl">Wealth Summary</h2>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
+          <article className="relative overflow-hidden rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
             <p className="font-syne text-xl font-bold text-neutral-950">Portfolio Value</p>
             <div className="mt-4 flex items-center gap-4">
               <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl">
@@ -233,9 +239,15 @@ export function MyBalancesSection() {
                 <p className="mt-2 font-manrope text-base text-neutral-600">Across all vaults</p>
               </div>
             </div>
+            <img
+              src="/images/Box-Token.png"
+              alt=""
+              aria-hidden="true"
+              className="pointer-events-none absolute bottom-3 right-3 h-30 w-30 select-none object-contain"
+            />
           </article>
 
-          <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
+          <article className="relative overflow-hidden rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
             <p className="font-syne text-xl font-bold text-neutral-950">Lifetime Earnings</p>
             <div className="mt-4">
               <p className="font-syne text-4xl font-bold leading-none text-emerald-500">
@@ -243,18 +255,31 @@ export function MyBalancesSection() {
               </p>
               <p className="mt-2 font-manrope text-base text-neutral-600">Auto Compound</p>
             </div>
+            <img
+              src="/images/Star-Sign.png"
+              alt=""
+              aria-hidden="true"
+              className="pointer-events-none absolute bottom-3 right-3 h-30 w-30 select-none object-contain"
+            />
           </article>
 
           <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
-            <p className="font-syne text-xl font-bold text-neutral-950">Average APY & Health</p>
-            <div className="mt-4 flex items-center gap-6">
-              <p className="font-syne text-4xl font-bold leading-none text-neutral-950">
-                {wealthSummary.averageApy}
-              </p>
-              <span className="h-14 w-px bg-black/25" />
-              <p className="font-syne text-4xl font-bold leading-none text-emerald-500">
-                {wealthSummary.averageHealth}
-              </p>
+            <p className="font-syne text-xl font-bold text-neutral-950">Wallet Balances</p>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              {walletBalances.map((asset) => (
+                <div
+                  key={asset.symbol}
+                  className="rounded-xl border border-black/10 bg-black/[0.03] px-3 py-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <img src={asset.icon} alt={asset.symbol} className="h-5 w-5 object-contain" />
+                    <p className="font-manrope text-sm text-neutral-700">{asset.symbol}</p>
+                  </div>
+                  <p className="mt-1 font-syne text-xl font-bold leading-none text-neutral-950">
+                    {asset.display}
+                  </p>
+                </div>
+              ))}
             </div>
           </article>
         </div>
