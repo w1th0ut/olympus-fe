@@ -1,6 +1,7 @@
 {
   "title": "Dev",
   "pages": [
+    "technical-flow",
     "chainlink-workflow",
     "smart-contracts"
   ]
