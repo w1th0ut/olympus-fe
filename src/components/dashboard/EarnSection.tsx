@@ -8,7 +8,6 @@ import { arbitrumSepolia } from "wagmi/chains";
 import { aaveAbi, erc20Abi, vaultAbi } from "@/lib/apollos-abi";
 import { apollosAddresses, type VaultKey, vaultMarkets } from "@/lib/apollos";
 
-const EARN_CAPACITY_AAVE_POOL = "0xA0228A7554ef04EA90a4C4c4995BbC218F7fB4D7" as const;
 const DEFAULT_POOL_BORROW_CAP_USDC = 1_000_000;
 const ARBISCAN_SEPOLIA_BASE = "https://sepolia.arbiscan.io/address";
 const STAKED_VAULT_ENABLED = false;
@@ -115,21 +114,21 @@ export function EarnSection() {
       chainId: arbitrumSepolia.id,
     },
     {
-      address: EARN_CAPACITY_AAVE_POOL,
+      address: apollosAddresses.aavePool,
       abi: aaveAbi,
       functionName: "assetPrices" as const,
       args: [market.tokenAddress],
       chainId: arbitrumSepolia.id,
     },
     {
-      address: EARN_CAPACITY_AAVE_POOL,
+      address: apollosAddresses.aavePool,
       abi: aaveAbi,
       functionName: "getUserDebt" as const,
       args: [market.vaultAddress, apollosAddresses.usdc],
       chainId: arbitrumSepolia.id,
     },
     {
-      address: EARN_CAPACITY_AAVE_POOL,
+      address: apollosAddresses.aavePool,
       abi: aaveAbi,
       functionName: "getCreditLimit" as const,
       args: [market.vaultAddress, apollosAddresses.usdc],
@@ -260,6 +259,16 @@ export function EarnSection() {
     selectedMarket && normalizedNetAssetUsd > 0
       ? (normalizedNetAssetUsd + selectedMarket.debtUsdc) / normalizedNetAssetUsd
       : 1;
+  const longCompositionUsd = Math.max(0, normalizedNetAssetUsd);
+  const shortCompositionUsd = Math.max(0, selectedMarket?.debtUsdc ?? 0);
+  const compositionTotalUsd = longCompositionUsd + shortCompositionUsd;
+  const isCompositionEmpty = compositionTotalUsd <= 0;
+  const longCompositionPercent = isCompositionEmpty
+    ? 0
+    : (longCompositionUsd / compositionTotalUsd) * 100;
+  const shortCompositionPercent = isCompositionEmpty
+    ? 0
+    : (shortCompositionUsd / compositionTotalUsd) * 100;
 
   const vaultAmount = Number.parseFloat(vaultInput);
   const parsedVaultAmount = Number.isFinite(vaultAmount) && vaultAmount > 0 ? vaultAmount : 0;
@@ -547,22 +556,38 @@ export function EarnSection() {
                 Long base asset balanced by delegated USDC short debt.
               </p>
 
-              <div className="mt-4 h-4 w-full overflow-hidden rounded-full bg-black/10">
-                <div className="h-full w-3/5 bg-neutral-900" />
-                <div className="-mt-4 ml-[60%] h-4 w-2/5 bg-neutral-600" />
+              <div className="mt-4 flex h-4 w-full overflow-hidden rounded-full bg-black/10">
+                {isCompositionEmpty ? (
+                  <div className="h-full w-full bg-neutral-300" />
+                ) : (
+                  <>
+                    <div
+                      className="h-full bg-neutral-900"
+                      style={{ width: `${longCompositionPercent}%` }}
+                    />
+                    <div
+                      className="h-full bg-neutral-600"
+                      style={{ width: `${shortCompositionPercent}%` }}
+                    />
+                  </>
+                )}
               </div>
 
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="rounded-lg border border-black/15 bg-neutral-100 px-3 py-2">
-                  <p className="font-manrope text-xs text-neutral-700">Long {selectedMarket.symbol} (60%)</p>
+                  <p className="font-manrope text-xs text-neutral-700">
+                    Long {selectedMarket.symbol} ({longCompositionPercent.toFixed(0)}%)
+                  </p>
                   <p className="font-syne text-lg font-bold text-neutral-950">
-                    {formatUsd(totalCollateralUsd * 0.6, 2)}
+                    {formatUsd(longCompositionUsd, 2)}
                   </p>
                 </div>
                 <div className="rounded-lg border border-black/15 bg-neutral-200 px-3 py-2">
-                  <p className="font-manrope text-xs text-neutral-700">Short Debt USDC (40%)</p>
+                  <p className="font-manrope text-xs text-neutral-700">
+                    Short Debt USDC ({shortCompositionPercent.toFixed(0)}%)
+                  </p>
                   <p className="font-syne text-lg font-bold text-neutral-900">
-                    {formatUsd(totalCollateralUsd * 0.4, 2)}
+                    {formatUsd(shortCompositionUsd, 2)}
                   </p>
                 </div>
               </div>
@@ -811,7 +836,7 @@ export function EarnSection() {
               <ArrowUpRight className="h-4 w-4 text-neutral-500" />
             </a>
             <a
-              href={`${ARBISCAN_SEPOLIA_BASE}/${EARN_CAPACITY_AAVE_POOL}`}
+              href={`${ARBISCAN_SEPOLIA_BASE}/${apollosAddresses.aavePool}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-between rounded-lg border border-black/10 px-3 py-2 font-manrope text-sm text-neutral-700 transition-colors hover:bg-black/[0.03]"

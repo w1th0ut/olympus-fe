@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { type Hex } from "viem";
 
 const STORAGE_KEY = "apollos_bridge_state_v1";
@@ -55,14 +55,14 @@ export function useBridgeState() {
     }
   }, [state, isLoaded]);
 
-  const updateState = (updates: Partial<BridgeState>) => {
+  const updateState = useCallback((updates: Partial<BridgeState>) => {
     setState((prev) => ({ ...prev, ...updates }));
-  };
+  }, []);
 
-  const clearState = () => {
+  const clearState = useCallback(() => {
     setState(INITIAL_STATE);
     localStorage.removeItem(STORAGE_KEY);
-  };
+  }, []);
 
   return { state, updateState, clearState, isLoaded };
 }

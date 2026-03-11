@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowUpRight, CircleHelp } from "lucide-react";
-import { formatUnits } from "viem";
+import { formatUnits, type Address } from "viem";
 import { useReadContracts } from "wagmi";
 import { arbitrum, arbitrumSepolia } from "wagmi/chains";
 import { aaveAbi, erc20Abi, uniswapAbi, vaultAbi } from "@/lib/apollos-abi";
@@ -23,8 +23,17 @@ const CHART_PADDING = 18;
 const CHART_MIN = 1.0;
 const CHART_MAX = 2.4;
 
-const AAVE_ARB_USDC_A_TOKEN = "0x724dc807b04555b71ed48a6896b6f41593b8c637" as const;
-const AAVE_ARB_USDC_VARIABLE_DEBT_TOKEN = "0xf611aeb5013fd2c0511c9cd55c7dc5c1140741a6" as const;
+function optionalAddress(value: string | undefined): Address | undefined {
+  if (!value) return undefined;
+  if (!/^0x[a-fA-F0-9]{40}$/.test(value)) return undefined;
+  return value as Address;
+}
+
+const AAVE_ARB_USDC_A_TOKEN = optionalAddress(process.env.NEXT_PUBLIC_AAVE_ARB_USDC_A_TOKEN);
+const AAVE_ARB_USDC_VARIABLE_DEBT_TOKEN = optionalAddress(
+  process.env.NEXT_PUBLIC_AAVE_ARB_USDC_VARIABLE_DEBT_TOKEN,
+);
+const AAVE_RESERVE_OVERVIEW_URL = process.env.NEXT_PUBLIC_AAVE_RESERVE_OVERVIEW_URL;
 const USDC_DECIMALS = 6;
 const SUPPLY_CAP_M = 512.3;
 const BORROW_CAP_M = 425.6;
@@ -102,6 +111,9 @@ function buildHealthSeries(baseHealth: number, range: HealthRange) {
 
 export function LendBorrowMonitorSection() {
   const [healthRange, setHealthRange] = useState<HealthRange>("7d");
+  const hasAaveReserveContracts = Boolean(
+    AAVE_ARB_USDC_A_TOKEN && AAVE_ARB_USDC_VARIABLE_DEBT_TOKEN,
+  );
 
   const contracts = [
     {
@@ -165,22 +177,25 @@ export function LendBorrowMonitorSection() {
   });
 
   const { data: reserveMainnetReads } = useReadContracts({
-    contracts: [
-      {
-        address: AAVE_ARB_USDC_A_TOKEN,
-        abi: erc20Abi,
-        functionName: "totalSupply",
-        chainId: arbitrum.id,
-      },
-      {
-        address: AAVE_ARB_USDC_VARIABLE_DEBT_TOKEN,
-        abi: erc20Abi,
-        functionName: "totalSupply",
-        chainId: arbitrum.id,
-      },
-    ],
+    contracts: hasAaveReserveContracts
+      ? [
+          {
+            address: AAVE_ARB_USDC_A_TOKEN!,
+            abi: erc20Abi,
+            functionName: "totalSupply",
+            chainId: arbitrum.id,
+          },
+          {
+            address: AAVE_ARB_USDC_VARIABLE_DEBT_TOKEN!,
+            abi: erc20Abi,
+            functionName: "totalSupply",
+            chainId: arbitrum.id,
+          },
+        ]
+      : [],
     allowFailure: true,
     query: {
+      enabled: hasAaveReserveContracts,
       refetchInterval: 30000,
     },
   });
@@ -374,15 +389,21 @@ export function LendBorrowMonitorSection() {
                   alt="Aave"
                   className="h-8 w-8 shrink-0 rounded-full border border-black/10 bg-white object-contain"
                 />
-                <a
-                  href="https://app.aave.com/reserve-overview/?underlyingAsset=0xaf88d065e77c8cc2239327c5edb3a432268e5831&marketName=proto_arbitrum_v3"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Open Aave USDC reserve overview"
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-black/15 bg-white text-neutral-800 transition-colors hover:bg-neutral-100"
-                >
-                  <ArrowUpRight className="h-4 w-4" />
-                </a>
+                {AAVE_RESERVE_OVERVIEW_URL ? (
+                  <a
+                    href={AAVE_RESERVE_OVERVIEW_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Open Aave USDC reserve overview"
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-black/15 bg-white text-neutral-800 transition-colors hover:bg-neutral-100"
+                  >
+                    <ArrowUpRight className="h-4 w-4" />
+                  </a>
+                ) : (
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-black/10 bg-black/[0.03] text-neutral-400">
+                    <ArrowUpRight className="h-4 w-4" />
+                  </span>
+                )}
               </div>
             </div>
 

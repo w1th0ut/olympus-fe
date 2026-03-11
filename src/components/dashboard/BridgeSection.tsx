@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { decodeEventLog, formatUnits, parseUnits } from "viem";
 import { ArrowRight, CheckCircle2, Clock3, XCircle, AlertCircle, ExternalLink } from "lucide-react";
 import {
@@ -305,6 +305,7 @@ export function BridgeSection() {
   const isOnDesiredChain = chainId === desiredChainId;
   const isWaitingForCCIP = Boolean(messageId || bridgeState.txHash || bridgeTxHash) && !isReadyToZap && !isCompleted;
   const isAwaitingAutoSwitch = isConnected && !isOnDesiredChain;
+  const shouldResetOnUnmountRef = useRef(false);
 
   // Handle Bridge Success -> Set Step 1 & Save State
   useEffect(() => {
@@ -347,6 +348,19 @@ export function BridgeSection() {
     clearState();
     setAmountInput("");
   }, [clearState, isCompleted, isOnBase, isSwitchPending, isZapConfirming, isZapPending]);
+
+  useEffect(() => {
+    shouldResetOnUnmountRef.current = activeStep >= 3 || ccipStatus === "success";
+  }, [activeStep, ccipStatus]);
+
+  useEffect(() => {
+    return () => {
+      if (!shouldResetOnUnmountRef.current) {
+        return;
+      }
+      clearState();
+    };
+  }, [clearState]);
 
   useEffect(() => {
     if (!isConnected || isSwitchPending || isOnDesiredChain) {
