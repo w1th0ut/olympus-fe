@@ -16,7 +16,7 @@ const dashboardMenuItems = [
   { label: "My Balances", href: "/dashboard?tab=balances" },
   { label: "Earn", href: "/dashboard?tab=earn" },
   { label: "DEX Pools", href: "/dashboard?tab=pools" },
-  { label: "Lend & Borrow", href: "/dashboard?tab=lend-borrow" },
+  { label: "Credit Line", href: "/dashboard?tab=credit-line" },
   { label: "Bridge", href: "/dashboard?tab=bridge" },
 ];
 

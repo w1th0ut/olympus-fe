@@ -1,12 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowUpRight, ChevronRight, Lock } from "lucide-react";
 import { formatUnits, parseUnits } from "viem";
 import { useAccount, useReadContracts } from "wagmi";
 import { arbitrumSepolia } from "wagmi/chains";
-import { aaveAbi, erc20Abi, vaultAbi } from "@/lib/apollos-abi";
-import { apollosAddresses, type VaultKey, vaultMarkets } from "@/lib/apollos";
+import { aaveAbi, erc20Abi, uniswapAbi, vaultAbi } from "@/lib/apollos-abi";
+import { apollosAddresses, toPoolKey, type VaultKey, vaultMarkets } from "@/lib/apollos";
 
 const DEFAULT_POOL_BORROW_CAP_USDC = 1_000_000;
 const ARBISCAN_SEPOLIA_BASE = "https://sepolia.arbiscan.io/address";
@@ -23,6 +24,11 @@ type DetailTab = "auto" | "stake";
 type VaultActionTab = "deposit" | "withdraw" | "convert";
 
 const AF_TOKEN_DECIMALS = 18;
+const vaultPoolIdMap: Record<VaultKey, string> = {
+  afWETH: "weth-usdc",
+  afWBTC: "wbtc-usdc",
+  afLINK: "link-usdc",
+};
 
 type EarnMarketData = {
   key: VaultKey;
@@ -36,6 +42,8 @@ type EarnMarketData = {
   decimals: number;
   assetAmount: number;
   usdPrice: number;
+  uniswapPrice: number;
+  deltaSpreadPct: number;
   usdValue: number;
   debtUsdc: number;
   creditLimitUsdc: number;
@@ -141,6 +149,13 @@ export function EarnSection() {
       args: [address ?? "0x0000000000000000000000000000000000000000"],
       chainId: arbitrumSepolia.id,
     },
+    {
+      address: apollosAddresses.uniswapPool,
+      abi: uniswapAbi,
+      functionName: "getPoolStateByKey" as const,
+      args: [toPoolKey(market.tokenAddress, apollosAddresses.usdc)],
+      chainId: arbitrumSepolia.id,
+    },
   ]);
 
   const { data, isLoading } = useReadContracts({
@@ -153,15 +168,32 @@ export function EarnSection() {
 
   const earnMarkets = useMemo<EarnMarketData[]>(() => {
     return vaultMarkets.map((market, index) => {
-      const offset = index * 5;
+      const offset = index * 6;
       const totalAssetsRaw = (data?.[offset]?.result as bigint | undefined) ?? BigInt(0);
       const rawPrice = (data?.[offset + 1]?.result as bigint | undefined) ?? BigInt(0);
       const rawDebt = (data?.[offset + 2]?.result as bigint | undefined) ?? BigInt(0);
       const rawCreditLimit = (data?.[offset + 3]?.result as bigint | undefined) ?? BigInt(0);
       const walletBalanceRaw = (data?.[offset + 4]?.result as bigint | undefined) ?? BigInt(0);
+      const poolState = (data?.[offset + 5]?.result as
+        | { reserve0: bigint; reserve1: bigint }
+        | undefined);
 
       const assetAmount = Number(formatUnits(totalAssetsRaw, market.decimals));
       const usdPrice = Number(formatUnits(rawPrice, 8));
+      const isBaseCurrency0 =
+        market.tokenAddress.toLowerCase() < apollosAddresses.usdc.toLowerCase();
+      const reserveBaseRaw = isBaseCurrency0
+        ? (poolState?.reserve0 ?? BigInt(0))
+        : (poolState?.reserve1 ?? BigInt(0));
+      const reserveUsdcRaw = isBaseCurrency0
+        ? (poolState?.reserve1 ?? BigInt(0))
+        : (poolState?.reserve0 ?? BigInt(0));
+      const reserveBaseAmount = Number(formatUnits(reserveBaseRaw, market.decimals));
+      const reserveUsdcAmount = Number(formatUnits(reserveUsdcRaw, 6));
+      const poolPriceUsd = reserveBaseAmount > 0 ? reserveUsdcAmount / reserveBaseAmount : 0;
+      const uniswapPrice = poolPriceUsd > 0 ? poolPriceUsd : usdPrice;
+      const deltaSpreadPct =
+        usdPrice > 0 ? ((uniswapPrice - usdPrice) / usdPrice) * 100 : 0;
       const usdValue = assetAmount * usdPrice;
       const debtUsdc = Number(formatUnits(rawDebt, 6));
       const creditLimitUsdc = Number(formatUnits(rawCreditLimit, 6));
@@ -184,6 +216,8 @@ export function EarnSection() {
         decimals: market.decimals,
         assetAmount,
         usdPrice,
+        uniswapPrice,
+        deltaSpreadPct: Number.isFinite(deltaSpreadPct) ? deltaSpreadPct : 0,
         usdValue,
         debtUsdc,
         creditLimitUsdc: maxBorrowUsdc,
@@ -449,6 +483,17 @@ export function EarnSection() {
     "[Engine] Delta exposure rebalanced back to target 2.0x profile.",
   ];
 
+  const selectedSpreadToneClass = selectedMarket
+    ? selectedMarket.deltaSpreadPct > 0.5
+      ? "text-red-600"
+      : selectedMarket.deltaSpreadPct < -0.5
+        ? "text-emerald-600"
+        : "text-amber-600"
+    : "text-neutral-700";
+  const selectedPoolHref = selectedMarket
+    ? `/dashboard?tab=pools&pool=${vaultPoolIdMap[selectedMarket.key]}`
+    : "/dashboard?tab=pools";
+
   if (selectedMarket) {
     return (
       <div className="mt-8 space-y-6">
@@ -488,12 +533,38 @@ export function EarnSection() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-black/10 bg-black/[0.03] px-4 py-3">
-              <p className="font-manrope text-xs text-neutral-600">Oracle Price</p>
-              <div className="mt-1 flex items-center gap-2">
-                <img src="/icons/Logo-Chainlink.png" alt="Chainlink" className="h-5 w-5 object-contain" />
-                <p className="font-syne text-2xl font-bold text-neutral-950">
-                  {formatUsd(selectedMarket.usdPrice, 2)}
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <div className="rounded-xl border border-black/10 bg-black/[0.03] px-4 py-3">
+                <p className="font-manrope text-xs text-neutral-600">Oracle Price</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <img src="/icons/Logo-Chainlink.png" alt="Chainlink" className="h-5 w-5 object-contain" />
+                  <p className="font-syne text-2xl font-bold text-neutral-950">
+                    {formatUsd(selectedMarket.usdPrice, 2)}
+                  </p>
+                </div>
+              </div>
+
+              <Link
+                href={selectedPoolHref}
+                className="group rounded-xl border border-black/10 bg-black/[0.03] px-4 py-3 transition-colors hover:bg-black/[0.05]"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-manrope text-xs text-neutral-600">Uniswap Spot Price</p>
+                  <ArrowUpRight className="h-4 w-4 text-neutral-500 transition-colors group-hover:text-neutral-900" />
+                </div>
+                <div className="mt-1 flex items-center gap-2">
+                  <img src="/icons/Logo-Uniswap.png" alt="Uniswap" className="h-5 w-5 object-contain" />
+                  <p className="font-syne text-2xl font-bold text-neutral-950">
+                    {formatUsd(selectedMarket.uniswapPrice, 2)}
+                  </p>
+                </div>
+              </Link>
+
+              <div className="rounded-xl border border-black/10 bg-black/[0.03] px-4 py-3">
+                <p className="font-manrope text-xs text-neutral-600">Delta Spread</p>
+                <p className={`mt-1 font-syne text-2xl font-bold ${selectedSpreadToneClass}`}>
+                  {selectedMarket.deltaSpreadPct >= 0 ? "+" : ""}
+                  {selectedMarket.deltaSpreadPct.toFixed(2)}%
                 </p>
               </div>
             </div>
@@ -754,9 +825,6 @@ export function EarnSection() {
                         style={{ width: `${selectedMarket.capacityValue}%` }}
                       />
                     </div>
-                    <p className="mt-2 font-manrope text-xs text-neutral-600">
-                      Remaining capacity: {formatUsd(selectedMarket.remainingCreditUsdc, 0)}
-                    </p>
                   </div>
                 ) : (
                   <div className="rounded-lg border border-dashed border-black/20 bg-black/[0.02] p-3">

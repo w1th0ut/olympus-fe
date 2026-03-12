@@ -1,10 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatUnits } from "viem";
-import { useAccount, useReadContracts } from "wagmi";
-import { aaveAbi, erc20Abi, uniswapAbi, vaultAbi } from "@/lib/apollos-abi";
+import {
+  useAccount,
+  useChainId,
+  useReadContracts,
+  useWaitForTransactionReceipt,
+  useWriteContract,
+} from "wagmi";
+import { arbitrumSepolia } from "wagmi/chains";
+import { aaveAbi, erc20Abi, mockTokenAbi, uniswapAbi, vaultAbi } from "@/lib/apollos-abi";
 import { apollosAddresses, toPoolKey, vaultMarkets } from "@/lib/apollos";
 
 const recentActivities = [
@@ -64,6 +71,17 @@ function formatNumber(value: number, maximumFractionDigits = 4) {
   }).format(value);
 }
 
+function formatCooldown(seconds: number) {
+  const clamped = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(clamped / 3600);
+  const minutes = Math.floor((clamped % 3600) / 60);
+  const secs = clamped % 60;
+  return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+}
+
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
+const USDC_FAUCET_AMOUNT = BigInt(100);
+
 const walletAssets = [
   {
     symbol: "WETH",
@@ -94,6 +112,8 @@ const walletAssets = [
 
 export function MyBalancesSection() {
   const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const isOnArbitrumSepolia = chainId === arbitrumSepolia.id;
   const activitiesPerPage = 2;
   const [activityPage, setActivityPage] = useState(1);
 
@@ -115,7 +135,7 @@ export function MyBalancesSection() {
         address: market.vaultAddress,
         abi: vaultAbi,
         functionName: "balanceOf" as const,
-        args: [address ?? "0x0000000000000000000000000000000000000000"],
+        args: [address ?? ZERO_ADDRESS],
       },
       {
         address: market.vaultAddress,
@@ -157,18 +177,53 @@ export function MyBalancesSection() {
     },
   });
 
-  const { data: walletBalancesData } = useReadContracts({
+  const { data: walletBalancesData, refetch: refetchWalletBalances } = useReadContracts({
     contracts: walletAssets.map((asset) => ({
       address: asset.address,
       abi: erc20Abi,
       functionName: "balanceOf" as const,
-      args: [address ?? "0x0000000000000000000000000000000000000000"],
+      args: [address ?? ZERO_ADDRESS],
     })),
     allowFailure: true,
     query: {
       enabled: Boolean(address),
       refetchInterval: 15000,
     },
+  });
+
+  const { data: faucetStatusData, refetch: refetchFaucetStatus } = useReadContracts({
+    contracts: [
+      {
+        address: apollosAddresses.usdc,
+        abi: mockTokenAbi,
+        functionName: "canClaimFaucet" as const,
+        args: [address ?? ZERO_ADDRESS],
+      },
+      {
+        address: apollosAddresses.usdc,
+        abi: mockTokenAbi,
+        functionName: "getFaucetCooldown" as const,
+        args: [address ?? ZERO_ADDRESS],
+      },
+    ],
+    allowFailure: true,
+    query: {
+      enabled: Boolean(address),
+      refetchInterval: 5000,
+    },
+  });
+
+  const {
+    writeContractAsync: writeUsdcFaucet,
+    data: usdcFaucetHash,
+    isPending: isUsdcFaucetPending,
+  } = useWriteContract();
+
+  const {
+    isLoading: isUsdcFaucetConfirming,
+    isSuccess: isUsdcFaucetSuccess,
+  } = useWaitForTransactionReceipt({
+    hash: usdcFaucetHash,
   });
 
   const activeVaultPositions = useMemo(() => {
@@ -214,6 +269,59 @@ export function MyBalancesSection() {
       }),
     [walletBalancesData, isConnected],
   );
+
+  const hasFaucetStatus = typeof (faucetStatusData?.[0]?.result as boolean | undefined) === "boolean";
+  const canClaimUsdcFaucet = isConnected && hasFaucetStatus
+    ? ((faucetStatusData?.[0]?.result as boolean | undefined) ?? false)
+    : false;
+  const usdcFaucetCooldownSeconds = Number(
+    (faucetStatusData?.[1]?.result as bigint | undefined) ?? BigInt(0),
+  );
+  const isUsdcFaucetBusy = isUsdcFaucetPending || isUsdcFaucetConfirming;
+  const isUsdcFaucetDisabled =
+    !isConnected || !isOnArbitrumSepolia || !hasFaucetStatus || !canClaimUsdcFaucet || isUsdcFaucetBusy;
+
+  const faucetButtonLabel = !isConnected
+      ? "Connect Wallet"
+    : !isOnArbitrumSepolia
+      ? "Switch to Arbitrum"
+      : isUsdcFaucetBusy
+        ? "Processing..."
+        : !hasFaucetStatus
+          ? "Loading..."
+        : canClaimUsdcFaucet
+          ? "Faucet"
+          : `Cooldown ${formatCooldown(usdcFaucetCooldownSeconds)}`;
+
+  async function handleUsdcFaucet() {
+    if (isUsdcFaucetDisabled) return;
+
+    try {
+      await writeUsdcFaucet({
+        address: apollosAddresses.usdc,
+        abi: mockTokenAbi,
+        functionName: "faucet",
+        args: [USDC_FAUCET_AMOUNT],
+        chainId: arbitrumSepolia.id,
+      });
+    } catch (error) {
+      console.error("USDC faucet transaction failed", error);
+    }
+  }
+
+  useEffect(() => {
+    if (!isUsdcFaucetSuccess || !usdcFaucetHash) {
+      return;
+    }
+
+    void refetchWalletBalances();
+    void refetchFaucetStatus();
+  }, [
+    isUsdcFaucetSuccess,
+    refetchFaucetStatus,
+    refetchWalletBalances,
+    usdcFaucetHash,
+  ]);
 
   const wealthSummary = {
     portfolioValue: isConnected ? formatCurrency(portfolioValue, 2) : "$0.00",
@@ -264,7 +372,21 @@ export function MyBalancesSection() {
           </article>
 
           <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
-            <p className="font-syne text-xl font-bold text-neutral-950">Wallet Balances</p>
+            <div className="flex items-start justify-between gap-3">
+              <p className="font-syne text-xl font-bold text-neutral-950">Wallet Balances</p>
+              <button
+                type="button"
+                onClick={handleUsdcFaucet}
+                disabled={isUsdcFaucetDisabled}
+                className={`rounded-md px-3 py-1.5 font-syne text-xs font-bold transition-colors sm:text-sm ${
+                  isUsdcFaucetDisabled
+                    ? "cursor-not-allowed bg-black/10 text-neutral-400"
+                    : "bg-neutral-900 text-white hover:bg-neutral-800"
+                }`}
+              >
+                {faucetButtonLabel}
+              </button>
+            </div>
             <div className="mt-4 grid grid-cols-2 gap-3">
               {walletBalances.map((asset) => (
                 <div

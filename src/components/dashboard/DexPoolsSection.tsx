@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { formatUnits, parseUnits, type Address } from "viem";
 import {
@@ -182,6 +183,15 @@ function formatCompactCurrency(value: number) {
   }).format(value);
 }
 
+function formatFeeCurrency(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  }).format(value);
+}
+
 function formatPrice(value: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -206,6 +216,17 @@ function formatAxisTick(value: number, mode: MetricMode) {
 }
 
 function formatTokenAmount(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0";
+  }
+
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 6,
+  }).format(value);
+}
+
+function formatExecutionPrice(value: number) {
   if (!Number.isFinite(value) || value <= 0) {
     return "0";
   }
@@ -266,6 +287,9 @@ export function DexPoolsSection() {
   const [sellAmountInput, setSellAmountInput] = useState("");
 
   const { address, isConnected } = useAccount();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const chainId = useChainId();
   const isOnArbitrum = chainId === arbitrumSepolia.id;
   const { switchChainAsync, isPending: isSwitchPending } = useSwitchChain();
@@ -280,6 +304,21 @@ export function DexPoolsSection() {
     setIsTokenReversed(false);
     setSellAmountInput("");
   }, [selectedPoolId]);
+
+  useEffect(() => {
+    const poolParam = searchParams.get("pool");
+    if (!poolParam) {
+      return;
+    }
+
+    const exists = pools.some((pool) => pool.id === poolParam);
+    if (!exists) {
+      return;
+    }
+
+    setSelectedPoolId(poolParam);
+    router.replace(`${pathname}?tab=pools`, { scroll: false });
+  }, [pathname, router, searchParams]);
 
   const chartSeries = useMemo(() => {
     if (!selectedPool) {
@@ -539,6 +578,7 @@ export function DexPoolsSection() {
   const sellAmount = Number.isFinite(parsedSellAmount) && parsedSellAmount > 0 ? parsedSellAmount : 0;
   const quotedBuyAmount = Number(formatUnits(quoteOutRaw, buyDecimals));
   const buyAmount = quoteOutRaw > BigInt(0) ? quotedBuyAmount : sellAmount * conversionRate;
+  const executionPrice = sellAmount > 0 && buyAmount > 0 ? buyAmount / sellAmount : 0;
   const sellUsdValue = isTokenReversed ? sellAmount : sellAmount * dynamicPrice;
   const buyUsdValue = isTokenReversed ? buyAmount * dynamicPrice : buyAmount;
 
@@ -639,18 +679,6 @@ export function DexPoolsSection() {
   const dynamicVol24Value = formatCompactCurrency(Math.max(totalReserveUsd * 0.12, 0));
   const dynamicFees24Value = formatCompactCurrency(Math.max(totalReserveUsd * 0.12 * 0.003, 0));
 
-  const poolPriceDisplay = dynamicPrice;
-  const oraclePriceDisplay = oraclePrice > 0 ? oraclePrice : dynamicPrice;
-  const spreadPctRaw = oraclePriceDisplay > 0
-    ? ((poolPriceDisplay - oraclePriceDisplay) / oraclePriceDisplay) * 100
-    : 0;
-  const spreadPct = Number.isFinite(spreadPctRaw) ? spreadPctRaw : 0;
-  const spreadToneClass = spreadPct > 0.5
-    ? "text-red-600"
-    : spreadPct < -0.5
-      ? "text-emerald-600"
-      : "text-amber-600";
-
   if (!selectedPool) {
     return listView;
   }
@@ -686,18 +714,6 @@ export function DexPoolsSection() {
                 <span className="rounded-md bg-black/[0.05] px-2 py-1 font-syne text-sm font-bold text-neutral-700">
                   {selectedPool.feeTier}
                 </span>
-              </div>
-
-              <div className="mt-4 flex flex-col gap-1">
-                <p className="font-manrope text-xs text-neutral-600">
-                  Pool Price: <span className="font-semibold text-neutral-900">1 {pairToken0} = {formatPrice(poolPriceDisplay)}</span>
-                </p>
-                <p className="font-manrope text-xs text-neutral-600">
-                  Oracle Price: <span className="font-semibold text-blue-700">1 {pairToken0} = {formatPrice(oraclePriceDisplay)}</span>
-                </p>
-                <p className={`font-manrope text-xs ${spreadToneClass}`}>
-                  Delta Spread: {spreadPct >= 0 ? "+" : ""}{spreadPct.toFixed(2)}%
-                </p>
               </div>
 
               <p className="mt-5 font-syne text-3xl font-bold text-neutral-950 sm:text-4xl">{primaryMetricValue}</p>
@@ -909,6 +925,14 @@ export function DexPoolsSection() {
             </div>
             <div className="mt-3 rounded-2xl border border-black/10 bg-white px-4 py-3">
               <div className="flex items-center justify-between gap-3">
+                <p className="font-manrope text-xs text-neutral-600">Execution price</p>
+                <p className="font-manrope text-xs text-neutral-900">
+                  {sellAmountRaw > BigInt(0)
+                    ? `1 ${sellToken} ~ ${formatExecutionPrice(executionPrice)} ${buyToken}`
+                    : "-"}
+                </p>
+              </div>
+              <div className="flex items-center justify-between gap-3">
                 <p className="font-manrope text-xs text-neutral-600">Fee ({feeRatePercent.toFixed(2)}%)</p>
                 <p className="font-manrope text-xs text-neutral-900">
                   {sellAmountRaw > BigInt(0) ? `${formatTokenAmount(feeAmount)} ${sellToken}` : "-"}
@@ -931,7 +955,7 @@ export function DexPoolsSection() {
               <div className="mt-1 flex items-center justify-between gap-3">
                 <p className="font-manrope text-xs text-neutral-600">Fee value</p>
                 <p className="font-manrope text-xs text-neutral-900">
-                  {sellAmountRaw > BigInt(0) ? formatCompactCurrency(feeUsdValue) : "-"}
+                  {sellAmountRaw > BigInt(0) ? formatFeeCurrency(feeUsdValue) : "-"}
                 </p>
               </div>
             </div>

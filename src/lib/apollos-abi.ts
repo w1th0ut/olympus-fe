@@ -42,3 +42,9 @@ export const uniswapAbi = parseAbi([
   "function getSwapQuote((address currency0,address currency1,uint24 fee,int24 tickSpacing,address hooks),bool,uint256) view returns (uint256,uint256)",
   "function swap((address currency0,address currency1,uint24 fee,int24 tickSpacing,address hooks),bool,int256,uint160) returns (uint256,uint256)",
 ]);
+
+export const mockTokenAbi = parseAbi([
+  "function faucet(uint256) external",
+  "function canClaimFaucet(address) view returns (bool)",
+  "function getFaucetCooldown(address) view returns (uint256)",
+]);

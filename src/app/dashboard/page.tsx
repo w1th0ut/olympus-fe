@@ -28,9 +28,9 @@ const sectionMeta = {
     title: "DEX Pools",
     description: "Explore Uniswap liquidity pools",
   },
-  "lend-borrow": {
-    title: "Lend & Borrow",
-    description: "Aave Lending Market Overview",
+  "credit-line": {
+    title: "Credit Line",
+    description: "Aave Credit Delegation Overview",
   },
   bridge: {
     title: "Bridge",
@@ -57,8 +57,8 @@ const navItems: DashboardNavItem<DashboardSectionKey>[] = [
     icon: "/icons/Logo-Pools.png",
   },
   {
-    key: "lend-borrow",
-    label: "Lend & Borrow",
+    key: "credit-line",
+    label: "Credit Line",
     icon: "/icons/Logo-Borrow.png",
   },
   {
@@ -73,7 +73,7 @@ function isDashboardSectionKey(value: string | null): value is DashboardSectionK
     value === "balances" ||
     value === "earn" ||
     value === "pools" ||
-    value === "lend-borrow" ||
+    value === "credit-line" ||
     value === "bridge"
   );
 }
@@ -86,8 +86,9 @@ function DashboardPageContent() {
   const { switchChainAsync, isPending: isSwitchPending } = useSwitchChain();
 
   const tabParam = searchParams.get("tab");
-  const activeKey: DashboardSectionKey = isDashboardSectionKey(tabParam)
-    ? tabParam
+  const normalizedTabParam = tabParam === "lend-borrow" ? "credit-line" : tabParam;
+  const activeKey: DashboardSectionKey = isDashboardSectionKey(normalizedTabParam)
+    ? normalizedTabParam
     : "balances";
   const active = sectionMeta[activeKey];
 
@@ -105,13 +106,12 @@ function DashboardPageContent() {
   }, [activeKey, chainId, isSwitchPending, switchChainAsync]);
 
   const handleSelect = (key: DashboardSectionKey) => {
-    if (key === activeKey) {
+    const isAlreadyClean = searchParams.toString() === `tab=${key}`;
+    if (key === activeKey && isAlreadyClean) {
       return;
     }
 
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("tab", key);
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    router.replace(`${pathname}?tab=${key}`, { scroll: false });
   };
 
   return (
@@ -125,7 +125,7 @@ function DashboardPageContent() {
           {activeKey === "earn" ? <EarnSection /> : null}
           {activeKey === "balances" ? <MyBalancesSection /> : null}
           {activeKey === "pools" ? <DexPoolsSection /> : null}
-          {activeKey === "lend-borrow" ? <LendBorrowMonitorSection /> : null}
+          {activeKey === "credit-line" ? <LendBorrowMonitorSection /> : null}
           {activeKey === "bridge" ? <BridgeSection /> : null}
         </main>
       </div>
