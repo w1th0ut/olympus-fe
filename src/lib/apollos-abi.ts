@@ -48,6 +48,11 @@ export const uniswapAbi = parseAbi([
 
 export const mockTokenAbi = parseAbi([
   "function faucet(uint256) external",
+  "function faucetRaw(uint256) external",
   "function canClaimFaucet(address) view returns (bool)",
   "function getFaucetCooldown(address) view returns (uint256)",
+]);
+
+export const dataFeedsCacheAbi = parseAbi([
+  "function latestRoundData(bytes32 dataId) view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)",
 ]);

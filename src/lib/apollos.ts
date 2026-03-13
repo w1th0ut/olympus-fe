@@ -10,6 +10,18 @@ function requiredAddr(envName: string, value: string | undefined): Address {
   return value as Address;
 }
 
+function requiredBigInt(envName: string, value: string | undefined): bigint {
+  if (!value) {
+    throw new Error(`Missing required env: ${envName}`);
+  }
+
+  try {
+    return BigInt(value);
+  } catch {
+    throw new Error(`Invalid bigint for env ${envName}: ${value}`);
+  }
+}
+
 export const apollosAddresses = {
   weth: requiredAddr("NEXT_PUBLIC_WETH_ADDRESS", process.env.NEXT_PUBLIC_WETH_ADDRESS),
   wbtc: requiredAddr("NEXT_PUBLIC_WBTC_ADDRESS", process.env.NEXT_PUBLIC_WBTC_ADDRESS),
@@ -39,6 +51,10 @@ export const apollosAddresses = {
   ),
   aavePool: requiredAddr("NEXT_PUBLIC_AAVE_POOL_ADDRESS", process.env.NEXT_PUBLIC_AAVE_POOL_ADDRESS),
   lvrHook: requiredAddr("NEXT_PUBLIC_LVR_HOOK_ADDRESS", process.env.NEXT_PUBLIC_LVR_HOOK_ADDRESS),
+  dataFeedsCache: requiredAddr(
+    "NEXT_PUBLIC_DATA_FEEDS_CACHE_ADDRESS",
+    process.env.NEXT_PUBLIC_DATA_FEEDS_CACHE_ADDRESS,
+  ),
   baseCcipBnm: requiredAddr(
     "NEXT_PUBLIC_BASE_CCIP_BNM_ADDRESS",
     process.env.NEXT_PUBLIC_BASE_CCIP_BNM_ADDRESS,
@@ -47,6 +63,12 @@ export const apollosAddresses = {
     "NEXT_PUBLIC_SOURCE_ROUTER_ADDRESS",
     process.env.NEXT_PUBLIC_SOURCE_ROUTER_ADDRESS,
   ),
+} as const;
+
+export const apollosNavIds = {
+  weth: requiredBigInt("NEXT_PUBLIC_WETH_NAV_ID", process.env.NEXT_PUBLIC_WETH_NAV_ID),
+  wbtc: requiredBigInt("NEXT_PUBLIC_WBTC_NAV_ID", process.env.NEXT_PUBLIC_WBTC_NAV_ID),
+  link: requiredBigInt("NEXT_PUBLIC_LINK_NAV_ID", process.env.NEXT_PUBLIC_LINK_NAV_ID),
 } as const;
 
 export const ccipSelectors = {

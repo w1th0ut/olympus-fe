@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { Droplets } from "lucide-react";
 import { formatUnits } from "viem";
 import {
   useAccount,
@@ -81,7 +82,7 @@ function formatCooldown(seconds: number) {
 }
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
-const USDC_FAUCET_AMOUNT = BigInt(100);
+const SHARE_PRICE_DECIMALS = 18;
 
 const walletAssets = [
   {
@@ -89,26 +90,37 @@ const walletAssets = [
     icon: "/icons/Logo-WETH.png",
     address: apollosAddresses.weth,
     decimals: 18,
+    faucetAmount: BigInt("10000000000000000"),
+    faucetLabel: "0.01",
   },
   {
     symbol: "WBTC",
     icon: "/icons/Logo-WBTC.png",
     address: apollosAddresses.wbtc,
     decimals: 8,
+    faucetAmount: BigInt(50000),
+    faucetLabel: "0.0005",
   },
   {
     symbol: "LINK",
     icon: "/icons/Logo-LINK.png",
     address: apollosAddresses.link,
     decimals: 18,
+    faucetAmount: BigInt("2000000000000000000"),
+    faucetLabel: "2",
   },
   {
     symbol: "USDC",
     icon: "/icons/Logo-USDC.png",
     address: apollosAddresses.usdc,
     decimals: 6,
+    faucetAmount: BigInt(20000000),
+    faucetLabel: "20",
   },
 ] as const;
+
+type WalletAsset = (typeof walletAssets)[number];
+type WalletAssetSymbol = WalletAsset["symbol"];
 
 
 export function MyBalancesSection() {
@@ -117,6 +129,7 @@ export function MyBalancesSection() {
   const isOnArbitrumSepolia = chainId === arbitrumSepolia.id;
   const activitiesPerPage = 2;
   const [activityPage, setActivityPage] = useState(1);
+  const [activeFaucetSymbol, setActiveFaucetSymbol] = useState<WalletAssetSymbol | null>(null);
 
   const totalActivityPages = Math.max(1, Math.ceil(recentActivities.length / activitiesPerPage));
   const paginatedActivities = recentActivities.slice(
@@ -201,20 +214,20 @@ export function MyBalancesSection() {
     refetch: refetchFaucetStatus,
     isLoading: isFaucetStatusLoading,
   } = useReadContracts({
-    contracts: [
+    contracts: walletAssets.flatMap((asset) => [
       {
-        address: apollosAddresses.usdc,
+        address: asset.address,
         abi: mockTokenAbi,
         functionName: "canClaimFaucet" as const,
         args: [address ?? ZERO_ADDRESS],
       },
       {
-        address: apollosAddresses.usdc,
+        address: asset.address,
         abi: mockTokenAbi,
         functionName: "getFaucetCooldown" as const,
         args: [address ?? ZERO_ADDRESS],
       },
-    ],
+    ]),
     allowFailure: true,
     query: {
       enabled: Boolean(address),
@@ -223,16 +236,16 @@ export function MyBalancesSection() {
   });
 
   const {
-    writeContractAsync: writeUsdcFaucet,
-    data: usdcFaucetHash,
-    isPending: isUsdcFaucetPending,
+    writeContractAsync: writeTokenFaucet,
+    data: faucetTxHash,
+    isPending: isFaucetPending,
   } = useWriteContract();
 
   const {
-    isLoading: isUsdcFaucetConfirming,
-    isSuccess: isUsdcFaucetSuccess,
+    isLoading: isFaucetConfirming,
+    isSuccess: isFaucetSuccess,
   } = useWaitForTransactionReceipt({
-    hash: usdcFaucetHash,
+    hash: faucetTxHash,
   });
 
   const activeVaultPositions = useMemo(() => {
@@ -243,8 +256,8 @@ export function MyBalancesSection() {
         const sharePriceRaw = (data?.[offset + 1]?.result as bigint | undefined) ?? BigInt(0);
         const priceRaw = (data?.[offset + 2]?.result as bigint | undefined) ?? BigInt(0);
 
-        const shares = Number(formatUnits(sharesRaw, 18));
-        const baseAmountRaw = (sharesRaw * sharePriceRaw) / (BigInt(10) ** BigInt(18));
+        const shares = Number(formatUnits(sharesRaw, market.decimals));
+        const baseAmountRaw = (sharesRaw * sharePriceRaw) / (BigInt(10) ** BigInt(SHARE_PRICE_DECIMALS));
         const baseAmount = Number(formatUnits(baseAmountRaw, market.decimals));
         const usdPrice = Number(formatUnits(priceRaw, 8));
         const valueUsd = baseAmount * usdPrice;
@@ -264,72 +277,90 @@ export function MyBalancesSection() {
 
   const portfolioValue = activeVaultPositions.reduce((sum, position) => sum + position.valueUsd, 0);
 
+  const isFaucetBusy = isFaucetPending || isFaucetConfirming;
+
   const walletBalances = useMemo(
     () =>
       walletAssets.map((asset, index) => {
         const raw = (walletBalancesData?.[index]?.result as bigint | undefined) ?? BigInt(0);
         const balance = Number(formatUnits(raw, asset.decimals));
         const fractionDigits = asset.symbol === "USDC" ? 2 : 4;
+        const statusOffset = index * 2;
+        const hasStatus = typeof (faucetStatusData?.[statusOffset]?.result as boolean | undefined) === "boolean";
+        const canClaimFaucet = hasStatus
+          ? ((faucetStatusData?.[statusOffset]?.result as boolean | undefined) ?? false)
+          : false;
+        const faucetCooldownSeconds = Number(
+          (faucetStatusData?.[statusOffset + 1]?.result as bigint | undefined) ?? BigInt(0),
+        );
+        const isCurrentFaucet = activeFaucetSymbol === asset.symbol;
+        const isFaucetDisabled =
+          !isConnected ||
+          !isOnArbitrumSepolia ||
+          !hasStatus ||
+          !canClaimFaucet ||
+          (isFaucetBusy && !isCurrentFaucet);
+
+        const faucetTooltip =
+          isConnected && isOnArbitrumSepolia && hasStatus && !canClaimFaucet
+            ? `Cooldown ${formatCooldown(faucetCooldownSeconds)}`
+            : "";
 
         return {
           ...asset,
           display: isConnected ? formatNumber(balance, fractionDigits) : "--",
+          canClaimFaucet,
+          faucetCooldownSeconds,
+          isCurrentFaucet,
+          isFaucetDisabled,
+          faucetTooltip,
         };
       }),
-    [walletBalancesData, isConnected],
+    [
+      walletBalancesData,
+      faucetStatusData,
+      isConnected,
+      isOnArbitrumSepolia,
+      isFaucetBusy,
+      isFaucetStatusLoading,
+      activeFaucetSymbol,
+    ],
   );
 
-  const hasFaucetStatus = typeof (faucetStatusData?.[0]?.result as boolean | undefined) === "boolean";
-  const canClaimUsdcFaucet = isConnected && hasFaucetStatus
-    ? ((faucetStatusData?.[0]?.result as boolean | undefined) ?? false)
-    : false;
-  const usdcFaucetCooldownSeconds = Number(
-    (faucetStatusData?.[1]?.result as bigint | undefined) ?? BigInt(0),
-  );
-  const isUsdcFaucetBusy = isUsdcFaucetPending || isUsdcFaucetConfirming;
-  const isUsdcFaucetDisabled =
-    !isConnected || !isOnArbitrumSepolia || !hasFaucetStatus || !canClaimUsdcFaucet || isUsdcFaucetBusy;
+  async function handleTokenFaucet(asset: WalletAsset) {
+    if (!isConnected || !isOnArbitrumSepolia || isFaucetBusy) return;
 
-  const faucetButtonLabel = !isConnected
-      ? "Connect Wallet"
-    : !isOnArbitrumSepolia
-      ? "Switch to Arbitrum"
-      : isUsdcFaucetBusy
-        ? "Processing..."
-        : isFaucetStatusLoading || !hasFaucetStatus
-          ? "Loading..."
-        : canClaimUsdcFaucet
-          ? "Faucet"
-          : `Cooldown ${formatCooldown(usdcFaucetCooldownSeconds)}`;
-
-  async function handleUsdcFaucet() {
-    if (isUsdcFaucetDisabled) return;
+    const targetAsset = walletBalances.find((item) => item.symbol === asset.symbol);
+    if (!targetAsset || targetAsset.isFaucetDisabled || !targetAsset.canClaimFaucet) return;
 
     try {
-      await writeUsdcFaucet({
-        address: apollosAddresses.usdc,
+      setActiveFaucetSymbol(asset.symbol);
+      await writeTokenFaucet({
+        address: asset.address,
         abi: mockTokenAbi,
-        functionName: "faucet",
-        args: [USDC_FAUCET_AMOUNT],
+        functionName: "faucetRaw",
+        args: [asset.faucetAmount],
         chainId: arbitrumSepolia.id,
       });
     } catch (error) {
-      console.error("USDC faucet transaction failed", error);
+      setActiveFaucetSymbol(null);
+      console.error(`${asset.symbol} faucet transaction failed`, error);
     }
   }
 
   useEffect(() => {
-    if (!isUsdcFaucetSuccess || !usdcFaucetHash) {
+    if (!isFaucetSuccess || !faucetTxHash) {
       return;
     }
 
+    setActiveFaucetSymbol(null);
     void refetchWalletBalances();
     void refetchFaucetStatus();
   }, [
-    isUsdcFaucetSuccess,
+    isFaucetSuccess,
     refetchFaucetStatus,
     refetchWalletBalances,
-    usdcFaucetHash,
+    faucetTxHash,
   ]);
 
   const wealthSummary = {
@@ -389,30 +420,33 @@ export function MyBalancesSection() {
           </article>
 
           <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
-            <div className="flex items-start justify-between gap-3">
-              <p className="font-syne text-xl font-bold text-neutral-950">Wallet Balances</p>
-              <button
-                type="button"
-                onClick={handleUsdcFaucet}
-                disabled={isUsdcFaucetDisabled}
-                className={`rounded-md px-3 py-1.5 font-syne text-xs font-bold transition-colors sm:text-sm ${
-                  isUsdcFaucetDisabled
-                    ? "cursor-not-allowed bg-black/10 text-neutral-400"
-                    : "bg-neutral-900 text-white hover:bg-neutral-800"
-                }`}
-              >
-                {faucetButtonLabel}
-              </button>
-            </div>
+            <p className="font-syne text-xl font-bold text-neutral-950">Wallet Balances</p>
             <div className="mt-4 grid grid-cols-2 gap-3">
               {walletBalances.map((asset) => (
                 <div
                   key={asset.symbol}
                   className="rounded-xl border border-black/10 bg-black/[0.03] px-3 py-2"
                 >
-                  <div className="flex items-center gap-2">
-                    <img src={asset.icon} alt={asset.symbol} className="h-5 w-5 object-contain" />
-                    <p className="font-manrope text-sm text-neutral-700">{asset.symbol}</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <img src={asset.icon} alt={asset.symbol} className="h-5 w-5 object-contain" />
+                      <p className="font-manrope text-sm text-neutral-700">{asset.symbol}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleTokenFaucet(asset);
+                      }}
+                      disabled={asset.isFaucetDisabled}
+                      title={asset.faucetTooltip || undefined}
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+                        asset.isFaucetDisabled
+                          ? "cursor-not-allowed bg-black/10 text-white/60"
+                          : "bg-neutral-900 text-white hover:bg-neutral-800"
+                      }`}
+                    >
+                      <Droplets className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                   {isConnected && isWalletBalancesLoading ? (
                     <Skeleton className="mt-1 h-6 w-14" />

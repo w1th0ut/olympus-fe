@@ -21,6 +21,7 @@ const DEFAULT_POOL_BORROW_CAP_USDC = 1_000_000;
 const ARBISCAN_SEPOLIA_BASE = "https://sepolia.arbiscan.io/address";
 const STAKED_VAULT_ENABLED = false;
 const CONVERT_ENABLED = false;
+const SHARE_PRICE_DECIMALS = 18;
 
 const marketVisuals: Record<string, { apy: string }> = {
   WETH: { apy: "27.12%" },
@@ -32,7 +33,6 @@ type DetailTab = "auto" | "stake";
 type VaultActionTab = "deposit" | "withdraw" | "convert";
 type PendingEarnAction = "approve" | "deposit" | "withdraw" | null;
 
-const AF_TOKEN_DECIMALS = 18;
 const vaultPoolIdMap: Record<VaultKey, string> = {
   afWETH: "weth-usdc",
   afWBTC: "wbtc-usdc",
@@ -328,9 +328,9 @@ export function EarnSection() {
     ? detailTab === "auto"
       ? actionTab === "deposit"
         ? selectedMarket.decimals
-        : AF_TOKEN_DECIMALS
-      : AF_TOKEN_DECIMALS
-    : AF_TOKEN_DECIMALS;
+        : selectedMarket.decimals
+      : selectedMarket.decimals
+    : 18;
 
   const inputAmountRaw = useMemo(() => {
     if (!selectedMarket || parsedVaultAmount <= 0) return BigInt(0);
@@ -409,27 +409,28 @@ export function EarnSection() {
   const oneBasePreviewSharesRaw = (detailReads?.[3]?.result as bigint | undefined) ?? BigInt(0);
   const baseTokenAllowanceRaw = (detailReads?.[4]?.result as bigint | undefined) ?? BigInt(0);
 
-  const afWalletBalance = Number(formatUnits(afWalletBalanceRaw, AF_TOKEN_DECIMALS));
+  const shareTokenDecimals = selectedMarket?.decimals ?? 18;
+  const afWalletBalance = Number(formatUnits(afWalletBalanceRaw, shareTokenDecimals));
   const basePerAfToken =
     selectedMarket && sharePriceRaw > BigInt(0)
-      ? Number(formatUnits(sharePriceRaw, selectedMarket.decimals))
+      ? Number(formatUnits(sharePriceRaw, SHARE_PRICE_DECIMALS))
       : 0;
   const afTokensPerBase =
     oneBasePreviewSharesRaw > BigInt(0)
-      ? Number(formatUnits(oneBasePreviewSharesRaw, AF_TOKEN_DECIMALS))
+      ? Number(formatUnits(oneBasePreviewSharesRaw, shareTokenDecimals))
       : basePerAfToken > 0
         ? 1 / basePerAfToken
         : 0;
 
   const autoWithdrawOutRaw =
     selectedMarket && inputAmountRaw > BigInt(0) && sharePriceRaw > BigInt(0)
-      ? (inputAmountRaw * sharePriceRaw) / (BigInt(10) ** BigInt(AF_TOKEN_DECIMALS))
+      ? (inputAmountRaw * sharePriceRaw) / (BigInt(10) ** BigInt(SHARE_PRICE_DECIMALS))
       : BigInt(0);
 
   const estimatedOutputAmount = selectedMarket
     ? detailTab === "auto"
       ? actionTab === "deposit"
-        ? Number(formatUnits(inputPreviewSharesRaw, AF_TOKEN_DECIMALS))
+        ? Number(formatUnits(inputPreviewSharesRaw, shareTokenDecimals))
         : actionTab === "withdraw"
           ? Number(formatUnits(autoWithdrawOutRaw, selectedMarket.decimals))
           : parsedVaultAmount

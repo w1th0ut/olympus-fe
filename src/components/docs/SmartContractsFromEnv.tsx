@@ -31,6 +31,7 @@ const SECTIONS: Array<{
       { label: "WETH Vault", envKey: "NEXT_PUBLIC_WETH_VAULT_ADDRESS", explorer: "arb-sepolia" },
       { label: "WBTC Vault", envKey: "NEXT_PUBLIC_WBTC_VAULT_ADDRESS", explorer: "arb-sepolia" },
       { label: "LINK Vault", envKey: "NEXT_PUBLIC_LINK_VAULT_ADDRESS", explorer: "arb-sepolia" },
+      { label: "DataFeedsCache", envKey: "NEXT_PUBLIC_DATA_FEEDS_CACHE_ADDRESS", explorer: "arb-sepolia" },
       { label: "LVR Hook", envKey: "NEXT_PUBLIC_LVR_HOOK_ADDRESS", explorer: "arb-sepolia" },
     ],
   },
