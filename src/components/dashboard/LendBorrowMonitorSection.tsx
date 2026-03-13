@@ -8,6 +8,7 @@ import { useReadContracts } from "wagmi";
 import { arbitrum, arbitrumSepolia } from "wagmi/chains";
 import { aaveAbi, erc20Abi, uniswapAbi, vaultAbi } from "@/lib/apollos-abi";
 import { apollosAddresses, toPoolKey, vaultMarkets } from "@/lib/apollos";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const HEALTH_RANGE_LABELS = {
   "24h": ["00h", "04h", "08h", "12h", "16h", "20h", "24h"],
@@ -199,6 +200,7 @@ export function LendBorrowMonitorSection() {
       refetchInterval: 30000,
     },
   });
+  const isMonitorLoading = isLoading;
 
   const usdcPriceRaw = (data?.[0]?.result as bigint | undefined) ?? BigInt(100000000);
   const aaveUsdcBalanceRaw = (data?.[1]?.result as bigint | undefined) ?? BigInt(0);
@@ -371,6 +373,56 @@ export function LendBorrowMonitorSection() {
   const thresholdRatio = (vaultHealth.liquidationThreshold - CHART_MIN) / (CHART_MAX - CHART_MIN);
   const thresholdY =
     CHART_HEIGHT - CHART_PADDING - thresholdRatio * (CHART_HEIGHT - CHART_PADDING * 2);
+
+  if (isMonitorLoading) {
+    return (
+      <div className="mt-8 space-y-7">
+        <section className="space-y-4">
+          <h2 className="font-syne text-xl font-bold text-neutral-950 sm:text-2xl">Aave Protocol Stats</h2>
+          <div className="grid grid-cols-1 gap-4 2xl:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <article
+                key={`creditline-top-skeleton-${index}`}
+                className="space-y-4 rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]"
+              >
+                <Skeleton className="h-7 w-44" />
+                <Skeleton className="h-16 w-full rounded-xl" />
+                <Skeleton className="h-16 w-full rounded-xl" />
+                <Skeleton className="h-16 w-full rounded-xl" />
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <div className="h-[3px] w-full rounded-full bg-black/30" />
+
+        <section className="space-y-4">
+          <h2 className="font-syne text-xl font-bold text-neutral-950 sm:text-2xl">Apollos Vault Stats</h2>
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            {Array.from({ length: 2 }).map((_, index) => (
+              <article
+                key={`creditline-mid-skeleton-${index}`}
+                className="space-y-4 rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]"
+              >
+                <Skeleton className="h-7 w-48" />
+                <Skeleton className="h-24 w-full rounded-xl" />
+                <Skeleton className="h-12 w-full rounded-lg" />
+                <Skeleton className="h-12 w-full rounded-lg" />
+                <Skeleton className="h-12 w-full rounded-lg" />
+              </article>
+            ))}
+          </div>
+          <article className="space-y-4 rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
+            <div className="flex items-center justify-between gap-3">
+              <Skeleton className="h-7 w-52" />
+              <Skeleton className="h-8 w-44 rounded-full" />
+            </div>
+            <Skeleton className="h-[280px] w-full rounded-xl" />
+          </article>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-8 space-y-7">

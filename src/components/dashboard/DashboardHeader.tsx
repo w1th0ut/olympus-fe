@@ -10,6 +10,7 @@ import {
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { baseSepolia } from "wagmi/chains";
 import { targetChain } from "@/lib/wagmi";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface DashboardHeaderProps {
   title: string;
@@ -130,13 +131,15 @@ export function DashboardHeader({ title, description, activeSection }: Dashboard
               <p className="mt-1 break-all font-manrope text-xs text-neutral-600">{address}</p>
               <div className="mt-2 rounded-lg border border-black/10 bg-black/[0.02] px-2.5 py-2">
                 <p className="font-manrope text-[11px] text-neutral-500">{balanceLabel}</p>
-                <p className="font-syne text-sm font-bold text-neutral-900">
-                  {isBalanceLoading
-                    ? "Loading..."
-                    : nativeBalance
+                {isBalanceLoading ? (
+                  <Skeleton className="mt-1 h-4 w-28" />
+                ) : (
+                  <p className="font-syne text-sm font-bold text-neutral-900">
+                    {nativeBalance
                       ? `${Number(nativeBalance.formatted).toFixed(4)} ${nativeBalance.symbol}`
                       : "-"}
-                </p>
+                  </p>
+                )}
               </div>
 
               <div className="mt-3 grid grid-cols-2 gap-2">

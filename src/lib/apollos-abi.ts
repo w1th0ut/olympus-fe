@@ -9,6 +9,9 @@ export const vaultAbi = parseAbi([
   "function getHealthFactor() view returns (uint256)",
   "function balanceOf(address) view returns (uint256)",
   "function previewDeposit(uint256) view returns (uint256)",
+  "function previewWithdraw(uint256) view returns (uint256)",
+  "function deposit(uint256 assets, address receiver) returns (uint256 shares)",
+  "function withdraw(uint256 shares, uint256 minAmount) returns (uint256 amount)",
 ]);
 
 export const aaveAbi = parseAbi([

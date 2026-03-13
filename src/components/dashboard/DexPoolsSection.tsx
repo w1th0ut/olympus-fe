@@ -24,6 +24,7 @@ import {
 import { arbitrumSepolia } from "wagmi/chains";
 import { aaveAbi, erc20Abi, uniswapAbi } from "@/lib/apollos-abi";
 import { apollosAddresses, toPoolKey } from "@/lib/apollos";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type Timeframe = "1H" | "1D" | "1W" | "1M" | "1Y" | "ALL";
 type MetricMode = "Price" | "Volume";
@@ -451,7 +452,7 @@ export function DexPoolsSection() {
   const selectedPoolMeta = poolMeta[activePool.id] ?? poolMeta["weth-usdc"];
   const selectedPoolKey = toPoolKey(selectedPoolMeta.tokenAddress, apollosAddresses.usdc);
 
-  const { data: selectedPoolReads } = useReadContracts({
+  const { data: selectedPoolReads, isLoading: isSelectedPoolLoading } = useReadContracts({
     contracts: [
       {
         address: apollosAddresses.uniswapPool,
@@ -526,7 +527,7 @@ export function DexPoolsSection() {
 
   const zeroForOne = sellTokenAddress.toLowerCase() === selectedPoolKey.currency0.toLowerCase();
 
-  const { data: swapReads } = useReadContracts({
+  const { data: swapReads, isLoading: isSwapReadsLoading } = useReadContracts({
     contracts: [
       {
         address: sellTokenAddress,
@@ -614,6 +615,7 @@ export function DexPoolsSection() {
       : "High";
 
   const needsApproval = sellAmountRaw > BigInt(0) && allowanceRaw < sellAmountRaw;
+  const isSwapDataLoading = isSwapReadsLoading && Boolean(selectedPool && address);
   const hasEnoughBalance = sellAmountRaw <= sellBalanceRaw;
   const canSwap = sellAmountRaw > BigInt(0) && hasEnoughBalance;
   const actionEnabled = isConnected && !isBusy && (isOnArbitrum ? canSwap : sellAmountRaw > BigInt(0));
@@ -891,7 +893,13 @@ export function DexPoolsSection() {
                     <ChevronDown className="h-4 w-4" />
                   </button>
                 </div>
-                <p className="mt-2 text-right font-manrope text-xs text-neutral-500">{formatTokenAmount(walletSellBalance)} {sellToken}</p>
+                {isSwapDataLoading ? (
+                  <Skeleton className="mt-2 ml-auto h-4 w-20" />
+                ) : (
+                  <p className="mt-2 text-right font-manrope text-xs text-neutral-500">
+                    {formatTokenAmount(walletSellBalance)} {sellToken}
+                  </p>
+                )}
               </div>
 
               <div className="flex justify-center">
@@ -920,43 +928,65 @@ export function DexPoolsSection() {
                     <ChevronDown className="h-4 w-4" />
                   </button>
                 </div>
-                <p className="mt-2 text-right font-manrope text-xs text-neutral-500">{formatTokenAmount(walletBuyBalance)} {buyToken}</p>
+                {isSwapDataLoading ? (
+                  <Skeleton className="mt-2 ml-auto h-4 w-20" />
+                ) : (
+                  <p className="mt-2 text-right font-manrope text-xs text-neutral-500">
+                    {formatTokenAmount(walletBuyBalance)} {buyToken}
+                  </p>
+                )}
               </div>
             </div>
             <div className="mt-3 rounded-2xl border border-black/10 bg-white px-4 py-3">
               <div className="flex items-center justify-between gap-3">
                 <p className="font-manrope text-xs text-neutral-600">Execution price</p>
-                <p className="font-manrope text-xs text-neutral-900">
-                  {sellAmountRaw > BigInt(0)
-                    ? `1 ${sellToken} ~ ${formatExecutionPrice(executionPrice)} ${buyToken}`
-                    : "-"}
-                </p>
+                {isSwapDataLoading ? (
+                  <Skeleton className="h-4 w-32" />
+                ) : (
+                  <p className="font-manrope text-xs text-neutral-900">
+                    {sellAmountRaw > BigInt(0)
+                      ? `1 ${sellToken} ~ ${formatExecutionPrice(executionPrice)} ${buyToken}`
+                      : "-"}
+                  </p>
+                )}
               </div>
               <div className="flex items-center justify-between gap-3">
                 <p className="font-manrope text-xs text-neutral-600">Fee ({feeRatePercent.toFixed(2)}%)</p>
-                <p className="font-manrope text-xs text-neutral-900">
-                  {sellAmountRaw > BigInt(0) ? `${formatTokenAmount(feeAmount)} ${sellToken}` : "-"}
-                </p>
+                {isSwapDataLoading ? (
+                  <Skeleton className="h-4 w-20" />
+                ) : (
+                  <p className="font-manrope text-xs text-neutral-900">
+                    {sellAmountRaw > BigInt(0) ? `${formatTokenAmount(feeAmount)} ${sellToken}` : "-"}
+                  </p>
+                )}
               </div>
               <div className="mt-1 flex items-center justify-between gap-3">
                 <p className="font-manrope text-xs text-neutral-600">Price impact</p>
-                <p
-                  className={`font-manrope text-xs ${
-                    priceImpactLevel === "High"
-                      ? "text-red-600"
-                      : priceImpactLevel === "Medium"
-                        ? "text-amber-600"
-                        : "text-emerald-600"
-                  }`}
-                >
-                  {sellAmountRaw > BigInt(0) ? `${priceImpactPercent.toFixed(2)}% (${priceImpactLevel})` : "-"}
-                </p>
+                {isSwapDataLoading ? (
+                  <Skeleton className="h-4 w-24" />
+                ) : (
+                  <p
+                    className={`font-manrope text-xs ${
+                      priceImpactLevel === "High"
+                        ? "text-red-600"
+                        : priceImpactLevel === "Medium"
+                          ? "text-amber-600"
+                          : "text-emerald-600"
+                    }`}
+                  >
+                    {sellAmountRaw > BigInt(0) ? `${priceImpactPercent.toFixed(2)}% (${priceImpactLevel})` : "-"}
+                  </p>
+                )}
               </div>
               <div className="mt-1 flex items-center justify-between gap-3">
                 <p className="font-manrope text-xs text-neutral-600">Fee value</p>
-                <p className="font-manrope text-xs text-neutral-900">
-                  {sellAmountRaw > BigInt(0) ? formatFeeCurrency(feeUsdValue) : "-"}
-                </p>
+                {isSwapDataLoading ? (
+                  <Skeleton className="h-4 w-16" />
+                ) : (
+                  <p className="font-manrope text-xs text-neutral-900">
+                    {sellAmountRaw > BigInt(0) ? formatFeeCurrency(feeUsdValue) : "-"}
+                  </p>
+                )}
               </div>
             </div>
             <button
@@ -997,8 +1027,17 @@ export function DexPoolsSection() {
               <div>
                 <p className="font-manrope text-sm text-neutral-600">Pool balances</p>
                 <div className="mt-2 flex items-center justify-between gap-3">
-                  <p className="font-syne text-xl font-bold text-neutral-950">{reserve0Label}</p>
-                  <p className="font-syne text-xl font-bold text-neutral-950">{reserve1Label}</p>
+                  {isSelectedPoolLoading ? (
+                    <>
+                      <Skeleton className="h-7 w-24" />
+                      <Skeleton className="h-7 w-24" />
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-syne text-xl font-bold text-neutral-950">{reserve0Label}</p>
+                      <p className="font-syne text-xl font-bold text-neutral-950">{reserve1Label}</p>
+                    </>
+                  )}
                 </div>
                 <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-black/10">
                   <div className="flex h-full w-full">
@@ -1019,7 +1058,11 @@ export function DexPoolsSection() {
 
               <div>
                 <p className="font-manrope text-sm text-neutral-600">TVL</p>
-                <p className="mt-1 font-syne text-3xl font-bold text-neutral-950">{dynamicTvlValue}</p>
+                {isSelectedPoolLoading ? (
+                  <Skeleton className="mt-1 h-9 w-24" />
+                ) : (
+                  <p className="mt-1 font-syne text-3xl font-bold text-neutral-950">{dynamicTvlValue}</p>
+                )}
                 <p className="font-manrope text-sm text-emerald-500">+ {selectedPool.tvlChange}</p>
               </div>
 

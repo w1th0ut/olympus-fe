@@ -4,10 +4,18 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowUpRight, ChevronRight, Lock } from "lucide-react";
 import { formatUnits, parseUnits } from "viem";
-import { useAccount, useReadContracts } from "wagmi";
+import {
+  useAccount,
+  useChainId,
+  useReadContracts,
+  useSwitchChain,
+  useWaitForTransactionReceipt,
+  useWriteContract,
+} from "wagmi";
 import { arbitrumSepolia } from "wagmi/chains";
 import { aaveAbi, erc20Abi, uniswapAbi, vaultAbi } from "@/lib/apollos-abi";
 import { apollosAddresses, toPoolKey, type VaultKey, vaultMarkets } from "@/lib/apollos";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const DEFAULT_POOL_BORROW_CAP_USDC = 1_000_000;
 const ARBISCAN_SEPOLIA_BASE = "https://sepolia.arbiscan.io/address";
@@ -22,6 +30,7 @@ const marketVisuals: Record<string, { apy: string }> = {
 
 type DetailTab = "auto" | "stake";
 type VaultActionTab = "deposit" | "withdraw" | "convert";
+type PendingEarnAction = "approve" | "deposit" | "withdraw" | null;
 
 const AF_TOKEN_DECIMALS = 18;
 const vaultPoolIdMap: Record<VaultKey, string> = {
@@ -97,10 +106,18 @@ function buildYieldSeries(apyValue: number) {
 
 export function EarnSection() {
   const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const isOnArbitrum = chainId === arbitrumSepolia.id;
+  const { switchChainAsync, isPending: isSwitchPending } = useSwitchChain();
+  const { writeContractAsync, data: actionTxHash, isPending: isWritePending } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess: isActionSuccess } = useWaitForTransactionReceipt({
+    hash: actionTxHash,
+  });
   const [selectedMarketKey, setSelectedMarketKey] = useState<VaultKey | null>(null);
   const [detailTab, setDetailTab] = useState<DetailTab>("auto");
   const [actionTab, setActionTab] = useState<VaultActionTab>("deposit");
   const [vaultInput, setVaultInput] = useState("");
+  const [pendingAction, setPendingAction] = useState<PendingEarnAction>(null);
 
   useEffect(() => {
     if (!STAKED_VAULT_ENABLED && detailTab === "stake") {
@@ -158,7 +175,7 @@ export function EarnSection() {
     },
   ]);
 
-  const { data, isLoading } = useReadContracts({
+  const { data, isLoading, refetch: refetchMarkets } = useReadContracts({
     contracts,
     allowFailure: true,
     query: {
@@ -332,7 +349,11 @@ export function EarnSection() {
   const previewDepositArg =
     detailTab === "auto" && actionTab === "deposit" ? inputAmountRaw : BigInt(0);
 
-  const { data: detailReads } = useReadContracts({
+  const {
+    data: detailReads,
+    refetch: refetchDetailReads,
+    isLoading: isDetailLoading,
+  } = useReadContracts({
     contracts:
       selectedMarket === null
         ? []
@@ -364,6 +385,16 @@ export function EarnSection() {
               args: [oneBaseUnitRaw],
               chainId: arbitrumSepolia.id,
             },
+            {
+              address: selectedMarket.tokenAddress,
+              abi: erc20Abi,
+              functionName: "allowance" as const,
+              args: [
+                address ?? "0x0000000000000000000000000000000000000000",
+                selectedMarket.vaultAddress,
+              ],
+              chainId: arbitrumSepolia.id,
+            },
           ],
     allowFailure: true,
     query: {
@@ -376,6 +407,7 @@ export function EarnSection() {
   const sharePriceRaw = (detailReads?.[1]?.result as bigint | undefined) ?? BigInt(0);
   const afWalletBalanceRaw = (detailReads?.[2]?.result as bigint | undefined) ?? BigInt(0);
   const oneBasePreviewSharesRaw = (detailReads?.[3]?.result as bigint | undefined) ?? BigInt(0);
+  const baseTokenAllowanceRaw = (detailReads?.[4]?.result as bigint | undefined) ?? BigInt(0);
 
   const afWalletBalance = Number(formatUnits(afWalletBalanceRaw, AF_TOKEN_DECIMALS));
   const basePerAfToken =
@@ -469,12 +501,21 @@ export function EarnSection() {
     : 0;
 
   const canUseMax = sourceTokenBalance > 0;
+  const hasEnoughSourceBalance = sourceTokenBalance >= parsedVaultAmount;
+  const needsDepositApproval =
+    Boolean(selectedMarket) &&
+    detailTab === "auto" &&
+    actionTab === "deposit" &&
+    inputAmountRaw > BigInt(0) &&
+    baseTokenAllowanceRaw < inputAmountRaw;
+  const isActionBusy = isSwitchPending || isWritePending || isConfirming;
   const canSubmitAction =
     isConnected &&
     parsedVaultAmount > 0 &&
     detailTab === "auto" &&
     actionTab !== "convert" &&
-    sourceTokenBalance >= parsedVaultAmount;
+    hasEnoughSourceBalance &&
+    !isActionBusy;
 
   const aiLogs = [
     "[Gemini] Volatility spike detected from CEX orderbooks.",
@@ -493,6 +534,111 @@ export function EarnSection() {
   const selectedPoolHref = selectedMarket
     ? `/dashboard?tab=pools&pool=${vaultPoolIdMap[selectedMarket.key]}`
     : "/dashboard?tab=pools";
+  const isMarketLoading = isLoading;
+  const submitButtonLabel = !isConnected
+    ? "Connect Wallet"
+    : detailTab !== "auto"
+      ? "Launching Q3 2026"
+      : actionTab === "convert"
+        ? "Convert (Soon)"
+        : parsedVaultAmount <= 0
+          ? "Enter an amount"
+          : !hasEnoughSourceBalance
+            ? "Insufficient balance"
+            : isActionBusy
+              ? pendingAction === "approve"
+                ? "Approving..."
+                : pendingAction === "deposit"
+                  ? "Depositing..."
+                  : pendingAction === "withdraw"
+                    ? "Withdrawing..."
+                    : "Processing..."
+              : !isOnArbitrum
+                ? "Switch to Arbitrum"
+                : actionTab === "deposit" && needsDepositApproval
+                  ? `Approve ${selectedMarket?.symbol ?? "Token"}`
+                  : actionTab === "withdraw"
+                    ? "Withdraw"
+                    : "Deposit";
+
+  useEffect(() => {
+    if (!isActionSuccess || !actionTxHash) {
+      return;
+    }
+
+    void refetchMarkets();
+    void refetchDetailReads();
+
+    if (pendingAction === "deposit" || pendingAction === "withdraw") {
+      setVaultInput("");
+    }
+    setPendingAction(null);
+  }, [
+    actionTxHash,
+    isActionSuccess,
+    pendingAction,
+    refetchDetailReads,
+    refetchMarkets,
+  ]);
+
+  async function handleVaultAction() {
+    if (
+      !selectedMarket ||
+      !isConnected ||
+      !address ||
+      detailTab !== "auto" ||
+      actionTab === "convert" ||
+      parsedVaultAmount <= 0 ||
+      inputAmountRaw === BigInt(0) ||
+      !hasEnoughSourceBalance ||
+      isActionBusy
+    ) {
+      return;
+    }
+
+    try {
+      if (!isOnArbitrum) {
+        await switchChainAsync({ chainId: arbitrumSepolia.id });
+        return;
+      }
+
+      if (actionTab === "deposit") {
+        if (needsDepositApproval) {
+          setPendingAction("approve");
+          await writeContractAsync({
+            address: selectedMarket.tokenAddress,
+            abi: erc20Abi,
+            functionName: "approve",
+            args: [selectedMarket.vaultAddress, inputAmountRaw],
+            chainId: arbitrumSepolia.id,
+          });
+          return;
+        }
+
+        setPendingAction("deposit");
+        await writeContractAsync({
+          address: selectedMarket.vaultAddress,
+          abi: vaultAbi,
+          functionName: "deposit",
+          args: [inputAmountRaw, address],
+          chainId: arbitrumSepolia.id,
+        });
+        return;
+      }
+
+      setPendingAction("withdraw");
+      await writeContractAsync({
+        address: selectedMarket.vaultAddress,
+        abi: vaultAbi,
+        functionName: "withdraw",
+        args: [inputAmountRaw, BigInt(0)],
+        chainId: arbitrumSepolia.id,
+      });
+    } catch (error) {
+      setPendingAction(null);
+      console.error("Earn vault transaction failed", error);
+    }
+  }
 
   if (selectedMarket) {
     return (
@@ -783,9 +929,13 @@ export function EarnSection() {
                   </div>
 
                   <div className="mt-2 flex items-center justify-between gap-2">
-                    <p className="font-manrope text-xs text-neutral-500">
-                      Wallet balance: {formatNumber(sourceTokenBalance, 6)} {sourceTokenSymbol}
-                    </p>
+                    {isDetailLoading ? (
+                      <Skeleton className="h-4 w-44" />
+                    ) : (
+                      <p className="font-manrope text-xs text-neutral-500">
+                        Wallet balance: {formatNumber(sourceTokenBalance, 6)} {sourceTokenSymbol}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -794,21 +944,29 @@ export function EarnSection() {
                     <p className="font-manrope text-xs text-neutral-600">{estimatedOutputTitle}</p>
                     <div className="mt-1 flex items-center gap-2">
                       <img src={estimatedOutputIcon} alt="" className="h-5 w-5 object-contain" />
-                      <p className="font-syne text-2xl font-bold text-neutral-950">
-                        {formatNumber(estimatedOutputAmount, 6)} {destinationTokenSymbol}
-                      </p>
+                      {isDetailLoading ? (
+                        <Skeleton className="h-8 w-32" />
+                      ) : (
+                        <p className="font-syne text-2xl font-bold text-neutral-950">
+                          {formatNumber(estimatedOutputAmount, 6)} {destinationTokenSymbol}
+                        </p>
+                      )}
                     </div>
                   </div>
 
                   <div className="mt-2 space-y-1">
-                    {actionTab === "withdraw" ? (
-                      <p className="font-manrope text-xs text-neutral-600">
-                        1 {selectedMarket.key} = {formatNumber(basePerAfToken, 6)} {selectedMarket.symbol}
-                      </p>
+                    {isDetailLoading ? (
+                      <Skeleton className="h-4 w-44" />
                     ) : (
-                      <p className="font-manrope text-xs text-neutral-600">
-                        1 {selectedMarket.symbol} = {formatNumber(afTokensPerBase, 6)} {selectedMarket.key}
-                      </p>
+                      actionTab === "withdraw" ? (
+                        <p className="font-manrope text-xs text-neutral-600">
+                          1 {selectedMarket.key} = {formatNumber(basePerAfToken, 6)} {selectedMarket.symbol}
+                        </p>
+                      ) : (
+                        <p className="font-manrope text-xs text-neutral-600">
+                          1 {selectedMarket.symbol} = {formatNumber(afTokensPerBase, 6)} {selectedMarket.key}
+                        </p>
+                      )
                     )}
                   </div>
                 </div>
@@ -839,6 +997,9 @@ export function EarnSection() {
 
                 <button
                   type="button"
+                  onClick={() => {
+                    void handleVaultAction();
+                  }}
                   disabled={detailTab !== "auto" || !canSubmitAction}
                   className={`w-full rounded-md px-4 py-2 font-syne text-base font-bold ${
                     detailTab === "auto" && canSubmitAction
@@ -846,13 +1007,7 @@ export function EarnSection() {
                       : "cursor-not-allowed bg-black/10 text-neutral-500"
                   }`}
                 >
-                  {detailTab === "auto"
-                    ? actionTab === "deposit"
-                      ? "Deposit"
-                      : actionTab === "withdraw"
-                        ? "Withdraw"
-                        : "Convert (Soon)"
-                    : "Launching Q3 2026"}
+                  {submitButtonLabel}
                 </button>
               </div>
             </article>
@@ -927,7 +1082,11 @@ export function EarnSection() {
             className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]"
           >
             <p className="font-manrope text-sm text-neutral-600">{stat.label}</p>
-            <p className="mt-1 font-syne text-2xl font-bold text-neutral-950">{stat.value}</p>
+            {isMarketLoading ? (
+              <Skeleton className="mt-2 h-8 w-28" />
+            ) : (
+              <p className="mt-1 font-syne text-2xl font-bold text-neutral-950">{stat.value}</p>
+            )}
           </article>
         ))}
       </div>
@@ -944,47 +1103,71 @@ export function EarnSection() {
             </div>
             <div className="h-px bg-black/20" />
 
-            {earnMarkets.map((market) => (
-              <div key={market.key}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedMarketKey(market.key);
-                    setDetailTab("auto");
-                    setActionTab("deposit");
-                    setVaultInput("");
-                  }}
-                  className="grid w-full grid-cols-[2fr_1fr_1.2fr_1fr_0.4fr] items-center px-4 py-4 text-left transition-colors hover:bg-black/[0.03]"
-                >
-                  <div className="flex items-center gap-3">
-                    <img src={market.icon} alt="" className="h-8 w-8 object-contain" />
-                    <span className="font-syne text-lg font-bold text-neutral-950">{market.symbol}</span>
-                  </div>
-
-                  <span className="font-syne text-lg font-bold text-neutral-950">{market.apy}</span>
-
-                  <div>
-                    <p className="font-syne text-lg font-bold text-neutral-950">{market.tvlPrimary}</p>
-                    <p className="font-manrope text-sm text-neutral-600">{market.tvlSecondary}</p>
-                  </div>
-
-                  <div>
-                    <span className="font-syne text-lg font-bold text-neutral-950">{market.capacityLabel}</span>
-                    <div className="mt-2 h-2 w-full max-w-[120px] rounded-full bg-black/20">
-                      <div
-                        className="h-2 rounded-full bg-neutral-950"
-                        style={{ width: `${market.capacityValue}%` }}
-                      />
+            {isMarketLoading
+              ? Array.from({ length: 3 }).map((_, index) => (
+                  <div key={`earn-skeleton-${index}`}>
+                    <div className="grid grid-cols-[2fr_1fr_1.2fr_1fr_0.4fr] items-center px-4 py-4">
+                      <div className="flex items-center gap-3">
+                        <Skeleton className="h-8 w-8 rounded-full" />
+                        <Skeleton className="h-6 w-20" />
+                      </div>
+                      <Skeleton className="h-6 w-16" />
+                      <div className="space-y-2">
+                        <Skeleton className="h-6 w-24" />
+                        <Skeleton className="h-4 w-16" />
+                      </div>
+                      <div className="space-y-2">
+                        <Skeleton className="h-6 w-16" />
+                        <Skeleton className="h-2 w-24 rounded-full" />
+                      </div>
+                      <div className="flex justify-end">
+                        <Skeleton className="h-5 w-5 rounded-full" />
+                      </div>
                     </div>
+                    <div className="h-px bg-black/20" />
                   </div>
+                ))
+              : earnMarkets.map((market) => (
+                  <div key={market.key}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedMarketKey(market.key);
+                        setDetailTab("auto");
+                        setActionTab("deposit");
+                        setVaultInput("");
+                      }}
+                      className="grid w-full grid-cols-[2fr_1fr_1.2fr_1fr_0.4fr] items-center px-4 py-4 text-left transition-colors hover:bg-black/[0.03]"
+                    >
+                      <div className="flex items-center gap-3">
+                        <img src={market.icon} alt="" className="h-8 w-8 object-contain" />
+                        <span className="font-syne text-lg font-bold text-neutral-950">{market.symbol}</span>
+                      </div>
 
-                  <div className="flex justify-end">
-                    <ChevronRight className="h-5 w-5 text-neutral-500" />
+                      <span className="font-syne text-lg font-bold text-neutral-950">{market.apy}</span>
+
+                      <div>
+                        <p className="font-syne text-lg font-bold text-neutral-950">{market.tvlPrimary}</p>
+                        <p className="font-manrope text-sm text-neutral-600">{market.tvlSecondary}</p>
+                      </div>
+
+                      <div>
+                        <span className="font-syne text-lg font-bold text-neutral-950">{market.capacityLabel}</span>
+                        <div className="mt-2 h-2 w-full max-w-[120px] rounded-full bg-black/20">
+                          <div
+                            className="h-2 rounded-full bg-neutral-950"
+                            style={{ width: `${market.capacityValue}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <ChevronRight className="h-5 w-5 text-neutral-500" />
+                      </div>
+                    </button>
+                    <div className="h-px bg-black/20" />
                   </div>
-                </button>
-                <div className="h-px bg-black/20" />
-              </div>
-            ))}
+                ))}
           </div>
         </div>
       </article>

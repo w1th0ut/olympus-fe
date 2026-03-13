@@ -13,6 +13,7 @@ import {
 import { arbitrumSepolia } from "wagmi/chains";
 import { aaveAbi, erc20Abi, mockTokenAbi, uniswapAbi, vaultAbi } from "@/lib/apollos-abi";
 import { apollosAddresses, toPoolKey, vaultMarkets } from "@/lib/apollos";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const recentActivities = [
   {
@@ -168,7 +169,7 @@ export function MyBalancesSection() {
     ]),
   ];
 
-  const { data } = useReadContracts({
+  const { data, isLoading: isPortfolioLoading } = useReadContracts({
     contracts,
     allowFailure: true,
     query: {
@@ -177,7 +178,11 @@ export function MyBalancesSection() {
     },
   });
 
-  const { data: walletBalancesData, refetch: refetchWalletBalances } = useReadContracts({
+  const {
+    data: walletBalancesData,
+    refetch: refetchWalletBalances,
+    isLoading: isWalletBalancesLoading,
+  } = useReadContracts({
     contracts: walletAssets.map((asset) => ({
       address: asset.address,
       abi: erc20Abi,
@@ -191,7 +196,11 @@ export function MyBalancesSection() {
     },
   });
 
-  const { data: faucetStatusData, refetch: refetchFaucetStatus } = useReadContracts({
+  const {
+    data: faucetStatusData,
+    refetch: refetchFaucetStatus,
+    isLoading: isFaucetStatusLoading,
+  } = useReadContracts({
     contracts: [
       {
         address: apollosAddresses.usdc,
@@ -287,7 +296,7 @@ export function MyBalancesSection() {
       ? "Switch to Arbitrum"
       : isUsdcFaucetBusy
         ? "Processing..."
-        : !hasFaucetStatus
+        : isFaucetStatusLoading || !hasFaucetStatus
           ? "Loading..."
         : canClaimUsdcFaucet
           ? "Faucet"
@@ -341,9 +350,13 @@ export function MyBalancesSection() {
                 <img src="/icons/Logo-Portfolio.png" alt="" className="h-6 w-6 object-contain" />
               </div>
               <div>
-                <p className="font-syne text-4xl font-bold leading-none text-neutral-950">
-                  {wealthSummary.portfolioValue}
-                </p>
+                {isConnected && isPortfolioLoading ? (
+                  <Skeleton className="h-10 w-40" />
+                ) : (
+                  <p className="font-syne text-4xl font-bold leading-none text-neutral-950">
+                    {wealthSummary.portfolioValue}
+                  </p>
+                )}
                 <p className="mt-2 font-manrope text-base text-neutral-600">Across all vaults</p>
               </div>
             </div>
@@ -358,9 +371,13 @@ export function MyBalancesSection() {
           <article className="relative overflow-hidden rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
             <p className="font-syne text-xl font-bold text-neutral-950">Lifetime Earnings</p>
             <div className="mt-4">
-              <p className="font-syne text-4xl font-bold leading-none text-emerald-500">
-                {wealthSummary.lifetimeEarnings}
-              </p>
+              {isConnected && isPortfolioLoading ? (
+                <Skeleton className="h-10 w-28" />
+              ) : (
+                <p className="font-syne text-4xl font-bold leading-none text-emerald-500">
+                  {wealthSummary.lifetimeEarnings}
+                </p>
+              )}
               <p className="mt-2 font-manrope text-base text-neutral-600">Auto Compound</p>
             </div>
             <img
@@ -397,9 +414,13 @@ export function MyBalancesSection() {
                     <img src={asset.icon} alt={asset.symbol} className="h-5 w-5 object-contain" />
                     <p className="font-manrope text-sm text-neutral-700">{asset.symbol}</p>
                   </div>
-                  <p className="mt-1 font-syne text-xl font-bold leading-none text-neutral-950">
-                    {asset.display}
-                  </p>
+                  {isConnected && isWalletBalancesLoading ? (
+                    <Skeleton className="mt-1 h-6 w-14" />
+                  ) : (
+                    <p className="mt-1 font-syne text-xl font-bold leading-none text-neutral-950">
+                      {asset.display}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
@@ -427,7 +448,26 @@ export function MyBalancesSection() {
 
                 <div className="h-px bg-black/25" />
 
-                {activeVaultPositions.length > 0 ? (
+                {isConnected && isPortfolioLoading ? (
+                  <div className="space-y-2 py-3">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                      <div
+                        key={`positions-skeleton-${index}`}
+                        className="grid grid-cols-[1.7fr_0.9fr_1fr_0.8fr] items-center px-3 py-3"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Skeleton className="h-10 w-10 rounded-full" />
+                          <Skeleton className="h-5 w-20" />
+                        </div>
+                        <Skeleton className="h-5 w-16" />
+                        <Skeleton className="h-5 w-16" />
+                        <div className="flex justify-end">
+                          <Skeleton className="h-8 w-20 rounded-md" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : activeVaultPositions.length > 0 ? (
                   <div className="space-y-1 py-2">
                     {activeVaultPositions.map((position) => (
                       <div

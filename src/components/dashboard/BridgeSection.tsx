@@ -18,6 +18,7 @@ import { apollosAddresses, ccipSelectors, vaultMarkets, toPoolKey } from "@/lib/
 import { arbitrumSepolia, baseSepolia } from "wagmi/chains";
 import { useCCIPStatus } from "@/hooks/useCCIPStatus";
 import { useBridgeState } from "@/hooks/useBridgeState";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type VaultKey = "afWETH" | "afWBTC" | "afLINK";
 
@@ -135,7 +136,7 @@ export function BridgeSection() {
   }, [parsedAmount]);
 
   // Reads for Approval and Fees
-  const { data: bridgeReads } = useReadContracts({
+  const { data: bridgeReads, isLoading: isBridgeReadsLoading } = useReadContracts({
     contracts: [
       {
         address: apollosAddresses.sourceRouter,
@@ -252,6 +253,7 @@ export function BridgeSection() {
   }, [estimatedSharesRaw, destinationUsdcEquivalent, selectedVault.estimatePriceUsd, selectedVaultMarket.decimals]);
 
   const isEstimatorLoading = isEstimatorSwapLoading || (quotedBaseOutRaw > BigInt(0) && isEstimatorMintLoading);
+  const isBridgeDataLoading = isBridgeReadsLoading && !bridgeReads;
   const needsApproval = amountRaw > BigInt(0) && allowanceRaw < amountRaw;
   const baseCcipBnmBalance = Number(formatUnits(baseUsdcBalanceRaw, 18));
   const isOnBase = chainId === baseSepolia.id;
@@ -528,7 +530,13 @@ export function BridgeSection() {
                   </span>
                 </div>
               </div>
-              <p className="mt-2 font-manrope text-xs text-neutral-500">Wallet balance: {formatToken(baseCcipBnmBalance)} CCIP-BnM</p>
+              {isBridgeDataLoading ? (
+                <Skeleton className="mt-2 h-4 w-44" />
+              ) : (
+                <p className="mt-2 font-manrope text-xs text-neutral-500">
+                  Wallet balance: {formatToken(baseCcipBnmBalance)} CCIP-BnM
+                </p>
+              )}
               <p className="mt-1 font-manrope text-xs text-emerald-600">1 CCIP-BnM = 10 USDC</p>
             </div>
 
@@ -565,11 +573,19 @@ export function BridgeSection() {
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="rounded-lg border border-black/10 bg-white p-3">
                 <p className="font-manrope text-xs text-neutral-600">Estimated bridge fee</p>
-                <p className="font-syne text-lg font-bold text-neutral-950">{formatUsd(bridgeFee)}</p>
+                {isBridgeDataLoading ? (
+                  <Skeleton className="mt-1 h-7 w-24" />
+                ) : (
+                  <p className="font-syne text-lg font-bold text-neutral-950">{formatUsd(bridgeFee)}</p>
+                )}
               </div>
               <div className="rounded-lg border border-black/10 bg-white p-3">
                 <p className="font-manrope text-xs text-neutral-600">USDC</p>
-                <p className="font-syne text-lg font-bold text-neutral-950">{formatUsd(destinationUsdcEquivalent)}</p>
+                {isBridgeDataLoading ? (
+                  <Skeleton className="mt-1 h-7 w-24" />
+                ) : (
+                  <p className="font-syne text-lg font-bold text-neutral-950">{formatUsd(destinationUsdcEquivalent)}</p>
+                )}
               </div>
               <div className="rounded-lg border border-black/10 bg-white p-3 sm:col-span-2">
                 <p className="font-manrope text-xs text-neutral-600">Estimated minted</p>
