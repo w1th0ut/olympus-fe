@@ -32,6 +32,40 @@ const marketVisuals: Record<string, { apy: string }> = {
 type DetailTab = "auto" | "stake";
 type VaultActionTab = "deposit" | "withdraw" | "convert";
 type PendingEarnAction = "approve" | "deposit" | "withdraw" | null;
+type GuardianLogItem = {
+  id: string;
+  reason: string;
+  event: string;
+  observedAtMs: number;
+  poolTag?: string;
+};
+
+const fallbackGuardianLogs: GuardianLogItem[] = [
+  {
+    id: "fallback-1",
+    event: "HighVolatilityDetected",
+    reason: "[Gemini] Volatility spike detected from CEX orderbooks.",
+    observedAtMs: 1700000000000,
+  },
+  {
+    id: "fallback-2",
+    event: "DynamicFeeUpdated",
+    reason: "[Workflow] Raising hook fee to 0.50% to reduce toxic flow.",
+    observedAtMs: 1700000000000,
+  },
+  {
+    id: "fallback-3",
+    event: "LVRGuard",
+    reason: "[LVR Guard] JIT pattern score elevated, protection remains active.",
+    observedAtMs: 1700000000000,
+  },
+  {
+    id: "fallback-4",
+    event: "Rebalance",
+    reason: "[Engine] Delta exposure rebalanced back to target 2.0x profile.",
+    observedAtMs: 1700000000000,
+  },
+];
 
 const vaultPoolIdMap: Record<VaultKey, string> = {
   afWETH: "weth-usdc",
@@ -118,6 +152,8 @@ export function EarnSection() {
   const [actionTab, setActionTab] = useState<VaultActionTab>("deposit");
   const [vaultInput, setVaultInput] = useState("");
   const [pendingAction, setPendingAction] = useState<PendingEarnAction>(null);
+  const [guardianLogs, setGuardianLogs] = useState<GuardianLogItem[]>(fallbackGuardianLogs);
+  const [isGuardianLogsLoading, setIsGuardianLogsLoading] = useState(false);
 
   useEffect(() => {
     if (!STAKED_VAULT_ENABLED && detailTab === "stake") {
@@ -518,12 +554,8 @@ export function EarnSection() {
     hasEnoughSourceBalance &&
     !isActionBusy;
 
-  const aiLogs = [
-    "[Gemini] Volatility spike detected from CEX orderbooks.",
-    "[Workflow] Raising hook fee to 0.50% to reduce toxic flow.",
-    "[LVR Guard] JIT pattern score elevated, protection remains active.",
-    "[Engine] Delta exposure rebalanced back to target 2.0x profile.",
-  ];
+  const backendBaseUrl =
+    (process.env.NEXT_PUBLIC_APOLLOS_BE_URL ?? "").trim().replace(/\/$/, "");
 
   const selectedSpreadToneClass = selectedMarket
     ? selectedMarket.deltaSpreadPct > 0.5
@@ -581,6 +613,87 @@ export function EarnSection() {
     refetchDetailReads,
     refetchMarkets,
   ]);
+
+  useEffect(() => {
+    if (!selectedMarket) {
+      setGuardianLogs(fallbackGuardianLogs);
+      setIsGuardianLogsLoading(false);
+      return;
+    }
+
+    if (!backendBaseUrl) {
+      setGuardianLogs(fallbackGuardianLogs);
+      setIsGuardianLogsLoading(false);
+      return;
+    }
+
+    const abortController = new AbortController();
+
+    const fetchGuardianLogs = async () => {
+      try {
+        setIsGuardianLogsLoading(true);
+        const params = new URLSearchParams({
+          pool: selectedMarket.symbol,
+          limit: "6",
+        });
+        const response = await fetch(
+          `${backendBaseUrl}/api/reporter/logs?${params.toString()}`,
+          {
+            signal: abortController.signal,
+            cache: "no-store",
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch logs: ${response.status}`);
+        }
+
+        const json = (await response.json()) as {
+          items?: Array<{
+            id?: string;
+            reason?: string;
+            event?: string;
+            observedAtMs?: number;
+            poolTag?: string;
+          }>;
+        };
+
+        const items = Array.isArray(json.items)
+          ? json.items
+              .map((item, index) => ({
+                id: item.id ?? `remote-${index}`,
+                reason: item.reason ?? "No reason provided",
+                event: item.event ?? "Unknown",
+                observedAtMs:
+                  typeof item.observedAtMs === "number" && Number.isFinite(item.observedAtMs)
+                    ? item.observedAtMs
+                    : Date.now(),
+                poolTag: item.poolTag,
+              }))
+              .filter((item) => item.reason.trim().length > 0)
+          : [];
+
+        if (!abortController.signal.aborted) {
+          setGuardianLogs(items.length > 0 ? items : fallbackGuardianLogs);
+        }
+      } catch (error) {
+        if (!abortController.signal.aborted) {
+          console.error("Failed to fetch AI Guardian logs", error);
+          setGuardianLogs(fallbackGuardianLogs);
+        }
+      } finally {
+        if (!abortController.signal.aborted) {
+          setIsGuardianLogsLoading(false);
+        }
+      }
+    };
+
+    void fetchGuardianLogs();
+
+    return () => {
+      abortController.abort();
+    };
+  }, [backendBaseUrl, selectedMarket?.symbol]);
 
   async function handleVaultAction() {
     if (
@@ -814,11 +927,31 @@ export function EarnSection() {
             <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
               <h3 className="font-syne text-lg font-bold text-neutral-950">AI Guardian Logs</h3>
               <div className="mt-3 space-y-2 rounded-lg border border-black/10 bg-black/[0.03] p-3">
-                {aiLogs.map((log, index) => (
-                  <p key={index} className="font-mono text-xs text-emerald-700">
-                    {`> ${log}`}
-                  </p>
-                ))}
+                {isGuardianLogsLoading ? (
+                  <>
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-[92%]" />
+                    <Skeleton className="h-4 w-[85%]" />
+                  </>
+                ) : (
+                  guardianLogs.map((log) => (
+                    <div key={log.id} className="space-y-0.5">
+                      <p className="font-mono text-xs text-emerald-700">{`> ${log.reason}`}</p>
+                      <p className="font-manrope text-[11px] text-neutral-500">
+                        {new Date(log.observedAtMs).toLocaleString("en-US", {
+                          hour12: false,
+                          month: "short",
+                          day: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                        {" • "}
+                        {log.event}
+                        {log.poolTag ? ` • ${log.poolTag}` : ""}
+                      </p>
+                    </div>
+                  ))
+                )}
               </div>
             </article>
           </div>
