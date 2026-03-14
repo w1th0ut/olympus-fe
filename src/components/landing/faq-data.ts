@@ -17,12 +17,12 @@ export const faqData: FAQItemData[] = [
   {
     question: "What is LVR and why does it matter?",
     answer:
-      "LVR (Loss-Versus-Rebalancing) is the \"invisible tax\" that Liquidity Providers pay to arbitrage bots during market volatility. When prices crash on Binance, bots race to trade against your stale liquidity on-chain, stealing your value. Apollos matters because we block this. Our AI detects volatility and triggers our Uniswap V4 Hooks to raise fees instantly, forcing bots to back off so the profit stays with you.",
+      "LVR (Loss-Versus-Rebalancing) is the \"invisible tax\" that Liquidity Providers pay to arbitrage bots during market volatility. When prices crash on Chainlink Data Feeds, bots race to trade against your stale liquidity on-chain, stealing your value. Apollos matters because we block this. Our AI detects volatility and triggers our Uniswap V4 Hooks to raise fees instantly, forcing bots to back off so the profit stays with you.",
   },
   {
     question: "How does the AI protect my funds?",
     answer:
-      "We utilize Chainlink Workflows powered by Gemini AI as an automated \"Risk Analyst\". This system monitors off-chain market data (like Binance prices) 24/7. If it detects high volatility or a market crash, the AI calculates a risk score and instructs our smart contracts to enable defensive measures—such as increasing swap fees up to 50%—to prevent predatory trading before it happens.",
+      "We utilize Chainlink Workflows powered by Gemini AI as an automated \"Risk Analyst\". This system monitors off-chain market data 24/7. If it detects high volatility or a market crash, the AI calculates a risk score and instructs our smart contracts to enable defensive measures—such as increasing swap fees up to 50%—to prevent predatory trading before it happens.",
   },
   {
     question: "Can I deposit from other chains?",

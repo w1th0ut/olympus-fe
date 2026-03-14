@@ -25,17 +25,12 @@ const CONVERT_ENABLED = false;
 const SHARE_PRICE_DECIMALS = 18;
 const CHAINLINK_PRICE_DECIMALS = 8;
 const MAX_GUARDIAN_LOGS = 5;
+const APY_ANNUALIZATION_WINDOW_DAYS = 30;
 
 const chainlinkArbitrumFeeds: Record<"WETH" | "WBTC" | "LINK", `0x${string}`> = {
   WETH: "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612",
   WBTC: "0x6ce185860a4963106506C203335A2910413708e9",
   LINK: "0x86E53CF1B870786351Da77A57575e79CB55812CB",
-};
-
-const marketVisuals: Record<string, { apy: string }> = {
-  WETH: { apy: "27.12%" },
-  WBTC: { apy: "36.30%" },
-  LINK: { apy: "27.12%" },
 };
 
 type DetailTab = "auto" | "stake";
@@ -220,6 +215,12 @@ export function EarnSection() {
       args: [toPoolKey(market.tokenAddress, apollosAddresses.usdc)],
       chainId: arbitrumSepolia.id,
     },
+    {
+      address: market.vaultAddress,
+      abi: vaultAbi,
+      functionName: "getSharePrice" as const,
+      chainId: arbitrumSepolia.id,
+    },
   ]);
 
   const { data, isLoading, refetch: refetchMarkets } = useReadContracts({
@@ -232,7 +233,7 @@ export function EarnSection() {
 
   const earnMarkets = useMemo<EarnMarketData[]>(() => {
     return vaultMarkets.map((market, index) => {
-      const offset = index * 6;
+      const offset = index * 7;
       const totalAssetsRaw = (data?.[offset]?.result as bigint | undefined) ?? BigInt(0);
       const latestRoundData = (data?.[offset + 1]?.result as
         | readonly [bigint, bigint, bigint, bigint, bigint]
@@ -246,6 +247,7 @@ export function EarnSection() {
       const poolState = (data?.[offset + 5]?.result as
         | { reserve0: bigint; reserve1: bigint }
         | undefined);
+      const sharePriceRaw = (data?.[offset + 6]?.result as bigint | undefined) ?? BigInt(0);
 
       const assetAmount = Number(formatUnits(totalAssetsRaw, market.decimals));
       const usdPrice = Number(formatUnits(rawPrice, CHAINLINK_PRICE_DECIMALS));
@@ -270,8 +272,16 @@ export function EarnSection() {
       const capacityValue = maxBorrowUsdc > 0 ? Math.min(100, (debtUsdc / maxBorrowUsdc) * 100) : 0;
       const capacityLabel =
         capacityValue >= 99.995 ? "100% (FILLED)" : `${capacityValue.toFixed(3)}%`;
-      const apy = marketVisuals[market.symbol].apy;
-      const apyValue = Number.parseFloat(apy.replace("%", ""));
+      const sharePrice = Number(formatUnits(sharePriceRaw, SHARE_PRICE_DECIMALS));
+      const cumulativeReturnPct =
+        Number.isFinite(sharePrice) && sharePrice > 0
+          ? Math.max(0, (sharePrice - 1) * 100)
+          : 0;
+      const apyValue = Math.max(
+        0,
+        Math.min(999, cumulativeReturnPct * (365 / APY_ANNUALIZATION_WINDOW_DAYS)),
+      );
+      const apy = `${apyValue.toFixed(2)}%`;
 
       return {
         key: market.key,
@@ -281,7 +291,7 @@ export function EarnSection() {
         vaultAddress: market.vaultAddress,
         tokenAddress: market.tokenAddress,
         apy,
-        apyValue: Number.isFinite(apyValue) ? apyValue : 0,
+        apyValue,
         decimals: market.decimals,
         assetAmount,
         usdPrice,

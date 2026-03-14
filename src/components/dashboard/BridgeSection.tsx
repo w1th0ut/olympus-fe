@@ -21,6 +21,8 @@ import { useBridgeState } from "@/hooks/useBridgeState";
 import { Skeleton } from "@/components/ui/skeleton";
 
 type VaultKey = "afWETH" | "afWBTC" | "afLINK";
+const SHARE_PRICE_DECIMALS = 18;
+const APY_ANNUALIZATION_WINDOW_DAYS = 30;
 
 const sourceChain = {
   name: "Base",
@@ -33,7 +35,6 @@ const sourceChain = {
 const vaultTargets: {
   key: VaultKey;
   subtitle: string;
-  expectedApy: string;
   estimatePriceUsd: number;
   icon: string;
   targetBaseAsset: `0x${string}`;
@@ -41,7 +42,6 @@ const vaultTargets: {
   {
     key: "afWETH",
     subtitle: "Linearized WETH yield",
-    expectedApy: "27.12%",
     estimatePriceUsd: 2660,
     icon: "/icons/Logo-afWETH.png",
     targetBaseAsset: apollosAddresses.weth,
@@ -49,7 +49,6 @@ const vaultTargets: {
   {
     key: "afWBTC",
     subtitle: "Linearized WBTC yield",
-    expectedApy: "36.30%",
     estimatePriceUsd: 67414,
     icon: "/icons/Logo-afWBTC.png",
     targetBaseAsset: apollosAddresses.wbtc,
@@ -57,7 +56,6 @@ const vaultTargets: {
   {
     key: "afLINK",
     subtitle: "Linearized LINK yield",
-    expectedApy: "27.12%",
     estimatePriceUsd: 23.4,
     icon: "/icons/Logo-afLINK.png",
     targetBaseAsset: apollosAddresses.link,
@@ -121,6 +119,40 @@ export function BridgeSection() {
     vaultTargets.find((item) => item.key === targetVault) ?? vaultTargets[0];
   const selectedVaultMarket =
     vaultMarkets.find((market) => market.key === targetVault) ?? vaultMarkets[0];
+  const { data: vaultApyReads } = useReadContracts({
+    contracts: vaultMarkets.map((market) => ({
+      address: market.vaultAddress,
+      abi: vaultAbi,
+      functionName: "getSharePrice" as const,
+      chainId: arbitrumSepolia.id,
+    })),
+    allowFailure: true,
+    query: {
+      refetchInterval: 15000,
+    },
+  });
+  const apyByVault = useMemo<Record<VaultKey, string>>(() => {
+    const fallback: Record<VaultKey, string> = {
+      afWETH: "0.00%",
+      afWBTC: "0.00%",
+      afLINK: "0.00%",
+    };
+
+    return vaultMarkets.reduce((acc, market, index) => {
+      const sharePriceRaw = (vaultApyReads?.[index]?.result as bigint | undefined) ?? BigInt(0);
+      const sharePrice = Number(formatUnits(sharePriceRaw, SHARE_PRICE_DECIMALS));
+      const cumulativeReturnPct =
+        Number.isFinite(sharePrice) && sharePrice > 0
+          ? Math.max(0, (sharePrice - 1) * 100)
+          : 0;
+      const apyValue = Math.max(
+        0,
+        Math.min(999, cumulativeReturnPct * (365 / APY_ANNUALIZATION_WINDOW_DAYS)),
+      );
+      acc[market.key] = `${apyValue.toFixed(2)}%`;
+      return acc;
+    }, fallback);
+  }, [vaultApyReads]);
   const selectedPoolKey = toPoolKey(selectedVault.targetBaseAsset, apollosAddresses.usdc);
   const zeroForOneUsdcToBase =
     selectedPoolKey.currency0.toLowerCase() === apollosAddresses.usdc.toLowerCase();
@@ -662,7 +694,7 @@ export function BridgeSection() {
                         {vault.subtitle}
                       </p>
                       <p className="mt-1 font-syne text-sm font-bold text-emerald-600">
-                        {vault.expectedApy} APY
+                        {apyByVault[vault.key]} APY
                       </p>
                     </button>
                   );

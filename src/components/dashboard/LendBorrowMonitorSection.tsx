@@ -35,6 +35,7 @@ const AAVE_ARB_USDC_VARIABLE_DEBT_TOKEN = optionalAddress(
   process.env.NEXT_PUBLIC_AAVE_ARB_USDC_VARIABLE_DEBT_TOKEN,
 );
 const AAVE_RESERVE_OVERVIEW_URL = process.env.NEXT_PUBLIC_AAVE_RESERVE_OVERVIEW_URL;
+const CREDIT_LINE_ORACLE_URL = "https://arbiscan.io/address/0x6200A5122Af8D5D9e69f4d526311Cd85241ACeC9";
 const USDC_DECIMALS = 6;
 const SUPPLY_CAP_M = 512.3;
 const BORROW_CAP_M = 425.6;
@@ -306,12 +307,12 @@ export function LendBorrowMonitorSection() {
     totalDebt: formatUsd(aggregate.debtUsd, 2),
   };
 
-  const reserveMetrics = [
+  const reserveMetrics: Array<{ label: string; value: string; href?: string }> = [
     { label: "Reserve Size", value: formatMillionUsd(aaveSupplyUsdc) },
     { label: "Available liquidity", value: formatMillionUsd(aaveAvailableLiquidityUsdc) },
     { label: "Utilization Rate", value: `${aaveUtilizationRate.toFixed(2)}%` },
-    { label: "Oracle price", value: "$ 1.00" },
-  ] as const;
+    { label: "Oracle price", value: "$ 1.00", href: CREDIT_LINE_ORACLE_URL },
+  ];
 
   const supplyInfo = {
     utilization: supplyCapUsdc > 0 ? Math.min(100, (aaveSupplyUsdc / supplyCapUsdc) * 100) : 0,
@@ -462,8 +463,23 @@ export function LendBorrowMonitorSection() {
             <dl className="mt-5 space-y-3">
               {reserveMetrics.map((metric) => (
                 <div key={metric.label} className="rounded-lg border border-black/10 px-3 py-2">
-                  <dt className="font-manrope text-sm text-neutral-600">{metric.label}</dt>
-                  <dd className="font-syne text-xl font-bold text-neutral-950">{metric.value}</dd>
+                  <dt className="flex items-center justify-between gap-2 font-manrope text-sm text-neutral-600">
+                    <span>{metric.label}</span>
+                    {metric.href ? (
+                      <a
+                        href={metric.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Open ${metric.label} contract on Arbiscan`}
+                        className="inline-flex items-center text-neutral-600 transition-colors hover:text-neutral-950"
+                      >
+                        <ArrowUpRight className="h-3.5 w-3.5" />
+                      </a>
+                    ) : null}
+                  </dt>
+                  <dd className="mt-0.5">
+                    <span className="font-syne text-xl font-bold text-neutral-950">{metric.value}</span>
+                  </dd>
                 </div>
               ))}
             </dl>

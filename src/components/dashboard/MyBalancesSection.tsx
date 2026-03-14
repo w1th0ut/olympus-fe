@@ -122,7 +122,6 @@ const walletAssets = [
 type WalletAsset = (typeof walletAssets)[number];
 type WalletAssetSymbol = WalletAsset["symbol"];
 
-
 export function MyBalancesSection() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
@@ -261,6 +260,10 @@ export function MyBalancesSection() {
         const baseAmount = Number(formatUnits(baseAmountRaw, market.decimals));
         const usdPrice = Number(formatUnits(priceRaw, 8));
         const valueUsd = baseAmount * usdPrice;
+        const principalBaseRaw = sharesRaw;
+        const earningsBaseRaw =
+          baseAmountRaw > principalBaseRaw ? baseAmountRaw - principalBaseRaw : BigInt(0);
+        const earningsUsd = Number(formatUnits(earningsBaseRaw, market.decimals)) * usdPrice;
 
         return {
           symbol: market.key,
@@ -268,6 +271,7 @@ export function MyBalancesSection() {
           balanceDisplay: formatNumber(shares, 4),
           valueDisplay: formatCurrency(valueUsd, 2),
           valueUsd,
+          earningsUsd,
           sharesRaw,
         };
       })
@@ -276,6 +280,10 @@ export function MyBalancesSection() {
   }, [data]);
 
   const portfolioValue = activeVaultPositions.reduce((sum, position) => sum + position.valueUsd, 0);
+  const lifetimeEarningsUsd = activeVaultPositions.reduce(
+    (sum, position) => sum + position.earningsUsd,
+    0,
+  );
 
   const isFaucetBusy = isFaucetPending || isFaucetConfirming;
 
@@ -327,6 +335,7 @@ export function MyBalancesSection() {
     ],
   );
 
+
   async function handleTokenFaucet(asset: WalletAsset) {
     if (!isConnected || !isOnArbitrumSepolia || isFaucetBusy) return;
 
@@ -365,7 +374,7 @@ export function MyBalancesSection() {
 
   const wealthSummary = {
     portfolioValue: isConnected ? formatCurrency(portfolioValue, 2) : "$0.00",
-    lifetimeEarnings: "$0.00",
+    lifetimeEarnings: isConnected ? formatCurrency(lifetimeEarningsUsd, 2) : "$0.00",
   };
 
   return (
