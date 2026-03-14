@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowUpRight, ChevronRight, Lock } from "lucide-react";
 import { formatUnits, parseUnits } from "viem";
 import {
@@ -12,16 +12,25 @@ import {
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
-import { arbitrumSepolia } from "wagmi/chains";
-import { aaveAbi, erc20Abi, uniswapAbi, vaultAbi } from "@/lib/apollos-abi";
+import { arbitrum, arbitrumSepolia } from "wagmi/chains";
+import { aaveAbi, chainlinkAggregatorAbi, erc20Abi, uniswapAbi, vaultAbi } from "@/lib/apollos-abi";
 import { apollosAddresses, toPoolKey, type VaultKey, vaultMarkets } from "@/lib/apollos";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const DEFAULT_POOL_BORROW_CAP_USDC = 1_000_000;
 const ARBISCAN_SEPOLIA_BASE = "https://sepolia.arbiscan.io/address";
+const ARBISCAN_MAINNET_BASE = "https://arbiscan.io/address";
 const STAKED_VAULT_ENABLED = false;
 const CONVERT_ENABLED = false;
 const SHARE_PRICE_DECIMALS = 18;
+const CHAINLINK_PRICE_DECIMALS = 8;
+const MAX_GUARDIAN_LOGS = 5;
+
+const chainlinkArbitrumFeeds: Record<"WETH" | "WBTC" | "LINK", `0x${string}`> = {
+  WETH: "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612",
+  WBTC: "0x6ce185860a4963106506C203335A2910413708e9",
+  LINK: "0x86E53CF1B870786351Da77A57575e79CB55812CB",
+};
 
 const marketVisuals: Record<string, { apy: string }> = {
   WETH: { apy: "27.12%" },
@@ -96,6 +105,7 @@ type EarnMarketData = {
   walletBalance: number;
   tvlPrimary: string;
   tvlSecondary: string;
+  oracleFeedAddress: `0x${string}`;
 };
 
 function formatUsd(value: number, maximumFractionDigits = 2) {
@@ -154,6 +164,8 @@ export function EarnSection() {
   const [pendingAction, setPendingAction] = useState<PendingEarnAction>(null);
   const [guardianLogs, setGuardianLogs] = useState<GuardianLogItem[]>(fallbackGuardianLogs);
   const [isGuardianLogsLoading, setIsGuardianLogsLoading] = useState(false);
+  const [isGuardianLogsRefreshing, setIsGuardianLogsRefreshing] = useState(false);
+  const guardianLogsInitializedRef = useRef(false);
 
   useEffect(() => {
     if (!STAKED_VAULT_ENABLED && detailTab === "stake") {
@@ -175,11 +187,10 @@ export function EarnSection() {
       chainId: arbitrumSepolia.id,
     },
     {
-      address: apollosAddresses.aavePool,
-      abi: aaveAbi,
-      functionName: "assetPrices" as const,
-      args: [market.tokenAddress],
-      chainId: arbitrumSepolia.id,
+      address: chainlinkArbitrumFeeds[market.symbol],
+      abi: chainlinkAggregatorAbi,
+      functionName: "latestRoundData" as const,
+      chainId: arbitrum.id,
     },
     {
       address: apollosAddresses.aavePool,
@@ -223,7 +234,12 @@ export function EarnSection() {
     return vaultMarkets.map((market, index) => {
       const offset = index * 6;
       const totalAssetsRaw = (data?.[offset]?.result as bigint | undefined) ?? BigInt(0);
-      const rawPrice = (data?.[offset + 1]?.result as bigint | undefined) ?? BigInt(0);
+      const latestRoundData = (data?.[offset + 1]?.result as
+        | readonly [bigint, bigint, bigint, bigint, bigint]
+        | undefined);
+      const rawPrice = latestRoundData?.[1] && latestRoundData[1] > BigInt(0)
+        ? latestRoundData[1]
+        : BigInt(0);
       const rawDebt = (data?.[offset + 2]?.result as bigint | undefined) ?? BigInt(0);
       const rawCreditLimit = (data?.[offset + 3]?.result as bigint | undefined) ?? BigInt(0);
       const walletBalanceRaw = (data?.[offset + 4]?.result as bigint | undefined) ?? BigInt(0);
@@ -232,7 +248,7 @@ export function EarnSection() {
         | undefined);
 
       const assetAmount = Number(formatUnits(totalAssetsRaw, market.decimals));
-      const usdPrice = Number(formatUnits(rawPrice, 8));
+      const usdPrice = Number(formatUnits(rawPrice, CHAINLINK_PRICE_DECIMALS));
       const isBaseCurrency0 =
         market.tokenAddress.toLowerCase() < apollosAddresses.usdc.toLowerCase();
       const reserveBaseRaw = isBaseCurrency0
@@ -280,6 +296,7 @@ export function EarnSection() {
         walletBalance: Number(formatUnits(walletBalanceRaw, market.decimals)),
         tvlPrimary: formatCompactToken(assetAmount, market.symbol),
         tvlSecondary: formatUsd(usdValue, 0),
+        oracleFeedAddress: chainlinkArbitrumFeeds[market.symbol],
       };
     });
   }, [data]);
@@ -618,37 +635,45 @@ export function EarnSection() {
     if (!selectedMarket) {
       setGuardianLogs(fallbackGuardianLogs);
       setIsGuardianLogsLoading(false);
+      setIsGuardianLogsRefreshing(false);
+      guardianLogsInitializedRef.current = false;
       return;
     }
 
     if (!backendBaseUrl) {
       setGuardianLogs(fallbackGuardianLogs);
       setIsGuardianLogsLoading(false);
+      setIsGuardianLogsRefreshing(false);
+      guardianLogsInitializedRef.current = false;
       return;
     }
 
+    guardianLogsInitializedRef.current = false;
     const abortController = new AbortController();
+    let intervalHandle: ReturnType<typeof setInterval> | null = null;
 
-    const fetchGuardianLogs = async () => {
+    const fetchGuardianContext = async () => {
+      const isInitialFetch = !guardianLogsInitializedRef.current;
       try {
-        setIsGuardianLogsLoading(true);
+        if (isInitialFetch) {
+          setIsGuardianLogsLoading(true);
+        } else {
+          setIsGuardianLogsRefreshing(true);
+        }
         const params = new URLSearchParams({
           pool: selectedMarket.symbol,
-          limit: "6",
+          limit: String(MAX_GUARDIAN_LOGS),
         });
-        const response = await fetch(
-          `${backendBaseUrl}/api/reporter/logs?${params.toString()}`,
-          {
-            signal: abortController.signal,
-            cache: "no-store",
-          },
-        );
+        const logsResponse = await fetch(`${backendBaseUrl}/api/reporter/logs?${params.toString()}`, {
+          signal: abortController.signal,
+          cache: "no-store",
+        });
 
-        if (!response.ok) {
-          throw new Error(`Failed to fetch logs: ${response.status}`);
+        if (!logsResponse.ok) {
+          throw new Error(`Failed to fetch logs: ${logsResponse.status}`);
         }
 
-        const json = (await response.json()) as {
+        const logsJson = (await logsResponse.json()) as {
           items?: Array<{
             id?: string;
             reason?: string;
@@ -658,8 +683,8 @@ export function EarnSection() {
           }>;
         };
 
-        const items = Array.isArray(json.items)
-          ? json.items
+        const items = Array.isArray(logsJson.items)
+          ? logsJson.items
               .map((item, index) => ({
                 id: item.id ?? `remote-${index}`,
                 reason: item.reason ?? "No reason provided",
@@ -669,29 +694,39 @@ export function EarnSection() {
                     ? item.observedAtMs
                     : Date.now(),
                 poolTag: item.poolTag,
-              }))
+                }))
               .filter((item) => item.reason.trim().length > 0)
+              .slice(0, MAX_GUARDIAN_LOGS)
           : [];
 
         if (!abortController.signal.aborted) {
           setGuardianLogs(items.length > 0 ? items : fallbackGuardianLogs);
+          guardianLogsInitializedRef.current = true;
         }
       } catch (error) {
         if (!abortController.signal.aborted) {
           console.error("Failed to fetch AI Guardian logs", error);
           setGuardianLogs(fallbackGuardianLogs);
+          guardianLogsInitializedRef.current = true;
         }
       } finally {
         if (!abortController.signal.aborted) {
           setIsGuardianLogsLoading(false);
+          setIsGuardianLogsRefreshing(false);
         }
       }
     };
 
-    void fetchGuardianLogs();
+    void fetchGuardianContext();
+    intervalHandle = setInterval(() => {
+      void fetchGuardianContext();
+    }, 20_000);
 
     return () => {
       abortController.abort();
+      if (intervalHandle) {
+        clearInterval(intervalHandle);
+      }
     };
   }, [backendBaseUrl, selectedMarket?.symbol]);
 
@@ -794,15 +829,23 @@ export function EarnSection() {
             </div>
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <div className="rounded-xl border border-black/10 bg-black/[0.03] px-4 py-3">
-                <p className="font-manrope text-xs text-neutral-600">Oracle Price</p>
+              <a
+                href={`${ARBISCAN_MAINNET_BASE}/${selectedMarket.oracleFeedAddress}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group rounded-xl border border-black/10 bg-black/[0.03] px-4 py-3 transition-colors hover:bg-black/[0.05]"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-manrope text-xs text-neutral-600">Oracle Price</p>
+                  <ArrowUpRight className="h-4 w-4 text-neutral-500 transition-colors group-hover:text-neutral-900" />
+                </div>
                 <div className="mt-1 flex items-center gap-2">
                   <img src="/icons/Logo-Chainlink.png" alt="Chainlink" className="h-5 w-5 object-contain" />
                   <p className="font-syne text-2xl font-bold text-neutral-950">
                     {formatUsd(selectedMarket.usdPrice, 2)}
                   </p>
                 </div>
-              </div>
+              </a>
 
               <Link
                 href={selectedPoolHref}
@@ -934,23 +977,31 @@ export function EarnSection() {
                     <Skeleton className="h-4 w-[85%]" />
                   </>
                 ) : (
-                  guardianLogs.map((log) => (
-                    <div key={log.id} className="space-y-0.5">
-                      <p className="font-mono text-xs text-emerald-700">{`> ${log.reason}`}</p>
-                      <p className="font-manrope text-[11px] text-neutral-500">
-                        {new Date(log.observedAtMs).toLocaleString("en-US", {
-                          hour12: false,
-                          month: "short",
-                          day: "2-digit",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                        {" • "}
-                        {log.event}
-                        {log.poolTag ? ` • ${log.poolTag}` : ""}
-                      </p>
-                    </div>
-                  ))
+                  <>
+                    {guardianLogs.map((log) => (
+                      <div key={log.id} className="space-y-0.5">
+                        <p className="font-mono text-xs text-emerald-700">{`> ${log.reason}`}</p>
+                        <p className="font-manrope text-[11px] text-neutral-500">
+                          {new Date(log.observedAtMs).toLocaleString("en-US", {
+                            hour12: false,
+                            month: "short",
+                            day: "2-digit",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                          {" | "}
+                          {log.event}
+                          {log.poolTag ? ` | ${log.poolTag}` : ""}
+                        </p>
+                      </div>
+                    ))}
+                    {isGuardianLogsRefreshing ? (
+                      <div className="pt-1">
+                        <Skeleton className="h-3 w-full" />
+                        <Skeleton className="mt-1 h-3 w-[82%]" />
+                      </div>
+                    ) : null}
+                  </>
                 )}
               </div>
             </article>
@@ -1159,50 +1210,44 @@ export function EarnSection() {
                   <dt className="font-manrope text-sm text-neutral-600">Current Leverage</dt>
                   <dd className="font-syne text-xl font-bold text-neutral-950">{leverageCurrent.toFixed(2)}x</dd>
                 </div>
-                <div className="flex items-center justify-between rounded-lg border border-black/10 px-3 py-2">
-                  <dt className="font-manrope text-sm text-neutral-600">LVR Status</dt>
-                  <dd className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 font-syne text-sm font-bold text-emerald-700">
-                    ACTIVE
-                  </dd>
-                </div>
               </dl>
+
+              <div className="mt-5">
+                <h4 className="font-syne text-sm font-bold text-neutral-900">Contract Info</h4>
+                <div className="mt-2 grid grid-cols-1 gap-2">
+                  <a
+                    href={`${ARBISCAN_SEPOLIA_BASE}/${selectedMarket.vaultAddress}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-between rounded-lg border border-black/10 px-3 py-2 font-manrope text-sm text-neutral-700 transition-colors hover:bg-black/[0.03]"
+                  >
+                    Vault Contract
+                    <ArrowUpRight className="h-4 w-4 text-neutral-500" />
+                  </a>
+                  <a
+                    href={`${ARBISCAN_SEPOLIA_BASE}/${apollosAddresses.router}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-between rounded-lg border border-black/10 px-3 py-2 font-manrope text-sm text-neutral-700 transition-colors hover:bg-black/[0.03]"
+                  >
+                    Strategy Router
+                    <ArrowUpRight className="h-4 w-4 text-neutral-500" />
+                  </a>
+                  <a
+                    href={`${ARBISCAN_SEPOLIA_BASE}/${apollosAddresses.aavePool}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-between rounded-lg border border-black/10 px-3 py-2 font-manrope text-sm text-neutral-700 transition-colors hover:bg-black/[0.03]"
+                  >
+                    Credit Source
+                    <ArrowUpRight className="h-4 w-4 text-neutral-500" />
+                  </a>
+                </div>
+              </div>
             </article>
 
           </div>
         </section>
-
-        <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
-          <h3 className="font-syne text-lg font-bold text-neutral-950">Contract Info</h3>
-          <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
-            <a
-              href={`${ARBISCAN_SEPOLIA_BASE}/${selectedMarket.vaultAddress}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-between rounded-lg border border-black/10 px-3 py-2 font-manrope text-sm text-neutral-700 transition-colors hover:bg-black/[0.03]"
-            >
-              Vault Contract
-              <ArrowUpRight className="h-4 w-4 text-neutral-500" />
-            </a>
-            <a
-              href={`${ARBISCAN_SEPOLIA_BASE}/${apollosAddresses.router}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-between rounded-lg border border-black/10 px-3 py-2 font-manrope text-sm text-neutral-700 transition-colors hover:bg-black/[0.03]"
-            >
-              Strategy Router
-              <ArrowUpRight className="h-4 w-4 text-neutral-500" />
-            </a>
-            <a
-              href={`${ARBISCAN_SEPOLIA_BASE}/${apollosAddresses.aavePool}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-between rounded-lg border border-black/10 px-3 py-2 font-manrope text-sm text-neutral-700 transition-colors hover:bg-black/[0.03]"
-            >
-              Credit Source
-              <ArrowUpRight className="h-4 w-4 text-neutral-500" />
-            </a>
-          </div>
-        </article>
       </div>
     );
   }

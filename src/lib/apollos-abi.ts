@@ -22,6 +22,10 @@ export const aaveAbi = parseAbi([
   "function getUserCollateral(address,address) view returns (uint256)",
 ]);
 
+export const chainlinkAggregatorAbi = parseAbi([
+  "function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)",
+]);
+
 export const sourceRouterAbi = parseAbi([
   "function supportedChains(uint64) view returns (bool)",
   "function supportedAssets(address) view returns (bool)",
