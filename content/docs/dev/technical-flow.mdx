@@ -1,28 +1,103 @@
 ---
 title: Technical Flow
-description: High-level technical flow of Apollos protocol modules.
+description: System architecture, core concepts, contract architecture, and math foundation of Apollos.
 ---
 
 # Technical Flow
 
-This page is a draft skeleton for the full technical flow documentation.
+This page explains how Apollos works from architecture, protocol design, contracts, and math.
 
-## Overview
+## 🛠️System Architecture
 
-TODO
+Apollos is designed as a layered system:
 
-## Cross-Chain Entry
+- Frontend Layer (`apollos-fe`)
+  - User interaction for Earn, Credit Line, Bridge, and logs.
+  - Reads onchain state via `viem`/`wagmi`.
+  - Displays protocol metrics (TVL, APY, NAV-derived values, oracle references).
+- Backend & Automation Layer (`apollos-be`)
+  - Runs autonomous workers for Defender, Strategist, Accountant, and Reporter.
+  - Computes off-chain decisions and submits onchain transactions when thresholds are met.
+  - Persists AI/activity logs for UI consumption.
+- Chainlink CRE Layer (`apollos-cre`)
+  - Workflow-based automation model for modular role execution.
+  - Each workflow role can be simulated independently.
+- Smart Contract Layer (`apollos-sc`)
+  - Vaults, router, pool integration, fee hook, and feed cache.
+  - Executes the final source-of-truth state transitions.
 
-TODO
+### Architecture Diagram
+<div style={{ display: "flex", justifyContent: "center" }}>
+  <img
+    src="/images/Tech-Flow-Diagram.jpeg"
+    alt="Technical Flow Diagram"
+    style={{ width: "100%", maxWidth: "500px", height: "auto" }}
+  />
+</div>
 
-## Vault Strategy Execution
+<div style={{ display: "flex", justifyContent: "center", marginTop: "16px" }}>
+  <img
+    src="/images/Vault-Token-Diagram.jpeg"
+    alt="Vault Token Diagram"
+    style={{ width: "100%", maxWidth: "360px", height: "auto" }}
+  />
+</div>
 
-TODO
+The system supports multiple isolated markets (WETH, WBTC, LINK), each with its own vault and integrations.
 
-## Risk Controls
+## ⚙️Core Technical Concepts
 
-TODO
+- Delta-Neutral Vault Structure
+  - Users deposit base assets (WETH/WBTC/LINK) into per-asset vaults.
+  - Vault strategy aims to capture yield while controlling directional risk.
+- Oracle-Referenced Pricing
+  - Chainlink feeds are used as the canonical reference price.
+  - Uniswap spot is monitored against oracle price to detect spread/divergence.
+- Autonomous Risk Management
+  - Defender adjusts dynamic fee during abnormal volatility/divergence windows.
+  - Strategist monitors leverage/health and triggers rebalance actions.
+- Off-Chain Computation, Onchain Settlement
+  - Complex logic (analytics, AI reasoning, NAV computation) is performed off-chain.
+  - Final state updates are committed onchain via contracts.
+- Modular Observability
+  - Reporter writes structured logs so users can see why protocol actions occurred.
 
-## Observability
+## 📚Contract Architecture
 
-TODO
+Main contracts are organized by responsibility:
+
+- Factory
+  - Registry and deployer for market modules.
+- Vaults (`afWETH`, `afWBTC`, `afLINK`)
+  - User deposits/withdrawals.
+  - Share accounting and total asset tracking.
+- Router / Cross-Chain Receiver
+  - User entry points and cross-chain message handling.
+- Uniswap Pool Integration + LVR Hook
+  - Execution venue and dynamic fee control path.
+- Aave Integration
+  - Debt/collateral source for leverage and health checks.
+- Data Feeds Cache
+  - Onchain cache endpoint for NAV or oracle-aligned reporting values.
+
+For current deployed addresses, see the **[Smart Contracts](/docs/dev/smart-contracts)** page.
+
+## 🔢Mathematical Foundation
+
+Core formulas used in protocol logic:
+
+- Share Price
+  - `sharePrice = totalAssets / totalSupply`
+  - Used for vault accounting, user position value, and APY derivation.
+- Position Value (USD)
+  - `valueUsd = assetAmount * oraclePriceUsd`
+  - Oracle price is the reference baseline.
+- Delta Spread
+  - `deltaSpreadPct = ((uniswapSpot - oraclePrice) / oraclePrice) * 100`
+  - Used as a signal for fee defense and neutralization workflows.
+- Health Factor (conceptual)
+  - `HF = (collateralValue * liquidationThreshold) / debtValue`
+  - Strategist uses threshold bands to decide deleverage or releverage.
+- NAV Update Principle
+  - `NAV = assets - liabilities`
+  - Computed off-chain, then published onchain for low-gas reads.

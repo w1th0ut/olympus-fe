@@ -1,16 +1,158 @@
 ---
 title: Chainlink Workflow
-description: How Apollos uses Chainlink workflows for monitoring and cross-chain operations.
+description: Six-workflow CRE blueprint as the Central Nervous System of Apollos Finance.
 ---
 
 # Chainlink Workflow
 
-This section documents workflow-level integrations used by Apollos.
+## ⬛The Autonomous Hedge Fund System
 
-## Covered Areas
+Apollos Finance is not a static DeFi protocol that waits for user interaction. With Chainlink CRE (Chainlink Runtime Environment), Apollos operates as a 24/7 autonomous system with six parallel workflows designed to:
 
-- Signal monitoring and risk triggers.
-- Hook fee update flow.
-- Cross-chain bridge-to-vault routing path.
+- protect LPs from real-time market risk,
+- keep leveraged positions healthy,
+- verify credit-source solvency,
+- compute and publish NAV efficiently,
+- optimize cross-chain deposits,
+- and provide transparent machine decisions through AI logs.
 
-Detailed implementation notes will be expanded here.
+This architecture functions as the **Central Nervous System** of Apollos.
+
+## 🗺️Workflow Map
+
+1. The Reactive Defender
+2. The Strategist
+3. The Solvency Auditor
+4. The Accountant
+5. The Cross-Chain Manager
+6. The Reporter
+
+## 🛡️1) The Reactive Defender
+
+**Core feature:** Event-driven LVR protection & anti-JIT defense  
+**CRE template:** `building-blocks/indexer-block-trigger`
+
+### Problem
+Arbitrage bots can attack pools within seconds during volatility spikes, reducing LP profit through LVR loss.
+
+### How It Works
+- Listen: monitor new Arbitrum blocks via indexer.
+- Detect: identify large swaps (whale alerts) on target pools.
+- Analyze: evaluate price/volatility context using Chainlink Price Feeds and Gemini AI.
+- Act: execute onchain fee updates (`setDynamicFee` / `updateDynamicFee`) in near real-time.
+
+### Value
+Fast, event-driven LP protection without waiting for long cron intervals.
+
+### Diagram
+Add the Defender workflow diagram here.
+
+## 📊2) The Strategist
+
+**Core feature:** Health Factor rebalancing & yield optimization  
+**CRE template:** `starter-templates/custom-data-feed`
+
+### Problem
+If collateral drops sharply, the position risks liquidation. If too safe, capital becomes underutilized.
+
+### How It Works
+- Monitor: run a 5-10 minute cron to read collateral and debt from Aave via RPC.
+- Compute (off-chain): calculate Health Factor (HF) and leverage state in TypeScript.
+- Thermostat logic:
+  - `HF < 1.8` -> deleverage
+  - `HF > 2.2` -> releverage
+- Act: send report/trigger updates to smart contracts to execute `rebalance()`.
+
+### Value
+Set-and-forget operation: positions are managed automatically 24/7.
+
+### Diagram
+Add the Strategist workflow diagram here.
+
+## 🔍3) The Solvency Auditor
+
+**Core feature:** Lender-liquidity verification (whale monitoring)  
+**CRE template:** `starter-templates/custom-data-feed`
+
+### Problem
+If a delegator/whale suddenly withdraws liquidity, vault credit capacity can collapse and create repayment risk.
+
+### How It Works
+- Check: periodically read aUSDC balances and lender liquidity sources.
+- Verify: compare lender balance vs total vault debt.
+- Circuit breaker: if lender liquidity < vault debt, trigger `pauseBorrow()` / guard mode.
+
+### Value
+Prevents systemic failure from credit-line dependency.
+
+### Diagram
+Add the Solvency Auditor workflow diagram here.
+
+## 💵4) The Accountant
+
+**Core feature:** Off-chain NAV/share-price computation & feed publication  
+**CRE template:** `starter-templates/bring-your-own-data/workflow-ts/nav`
+
+### Problem
+Full NAV computation in Solidity is expensive for user deposit/withdraw transactions.
+
+### How It Works
+- Collect: read idle balances (WETH/WBTC/LINK), Uniswap LP value, and Aave debt.
+- Compute (off-chain): `NAV = (Idle + LP Value) - Debt`.
+- Publish: write NAV results to `DataFeedsCache` through report updates.
+- Integrate: `ApollosVault` reads values through `latestRoundData()` (oracle-style interface).
+
+### Value
+Significant gas savings for users and stronger Chainlink-native design.
+
+### Diagram
+Add the Accountant workflow diagram here.
+
+## 🔗5) The Cross-Chain Manager (Bridge Optimizer)
+
+**Core feature:** Cross-chain deposit aggregation (batching)  
+**CRE template:** `starter-templates/multi-chain-token-manager`
+
+### Problem
+Bridging every small deposit through CCIP is cost-inefficient.
+
+### How It Works
+- Buffer: hold deposits from secondary chains (for example, Base) in adapter contracts.
+- Monitor: track accumulated adapter balances.
+- Batch transfer: once threshold is reached (for example, > $1,000), trigger batched CCIP transfer to Arbitrum.
+
+### Value
+Substantially lower bridge cost for retail users through batching.
+
+### Diagram
+Add the Cross-Chain Manager workflow diagram here.
+
+## 📃6) The Reporter
+
+**Core feature:** Activity logs + AI-readable explanations for users  
+**CRE template:** `starter-templates/tokenized-asset-servicing`
+
+### Problem
+DeFi systems often look like black boxes: users cannot see why fees changed or why rebalances happened.
+
+### How It Works
+- Capture: monitor onchain events emitted by guardian/strategist actions.
+- Explain: encode action rationale using AI context (Gemini) plus market conditions.
+- Publish: send data via HTTP POST to backend logs for display in the "AI Guardian Logs" UI.
+
+### Value
+Machine-decision transparency, higher user trust, and clearer audit trails.
+
+### Diagram
+Add the Reporter workflow diagram here.
+
+## 📄Implementation Notes
+
+- All workflows are designed as modular roles and can be simulated independently:
+  - `cre workflow simulate workflows/defender --broadcast`
+  - `cre workflow simulate workflows/strategist --broadcast`
+  - `cre workflow simulate workflows/auditor --broadcast`
+  - `cre workflow simulate workflows/accountant --broadcast`
+  - `cre workflow simulate workflows/cross-chain-manager --broadcast`
+  - `cre workflow simulate workflows/reporter --broadcast`
+- Price data uses Chainlink Price Feeds as the baseline oracle reference.
