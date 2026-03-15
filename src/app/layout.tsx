@@ -2,11 +2,33 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import Providers from "./providers";
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://apollos-finance.vercel.app";
+
 export const metadata: Metadata = {
   title: "Apollos Finance - The Cross-Chain, LVR-Protected, & Linearized Yield Protocol",
   description: "Tame volatility, linearize gains",
+  metadataBase: new URL(siteUrl),
   icons: {
     icon: "/images/Logo.png",
+  },
+  openGraph: {
+    title: "Apollos Finance - The Cross-Chain, LVR-Protected, & Linearized Yield Protocol",
+    description: "Tame volatility, linearize gains",
+    url: "/",
+    siteName: "Apollos Finance",
+    type: "website",
+    images: [
+      {
+        url: "/images/OG-Banner.jpeg",
+        alt: "Apollos Finance Open Graph Banner",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Apollos Finance - The Cross-Chain, LVR-Protected, & Linearized Yield Protocol",
+    description: "Tame volatility, linearize gains",
+    images: ["/images/OG-Banner.jpeg"],
   },
 };
 
