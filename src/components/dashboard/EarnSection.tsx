@@ -44,33 +44,6 @@ type GuardianLogItem = {
   poolTag?: string;
 };
 
-const fallbackGuardianLogs: GuardianLogItem[] = [
-  {
-    id: "fallback-1",
-    event: "HighVolatilityDetected",
-    reason: "[Gemini] Volatility spike detected from CEX orderbooks.",
-    observedAtMs: 1700000000000,
-  },
-  {
-    id: "fallback-2",
-    event: "DynamicFeeUpdated",
-    reason: "[Workflow] Raising hook fee to 0.50% to reduce toxic flow.",
-    observedAtMs: 1700000000000,
-  },
-  {
-    id: "fallback-3",
-    event: "LVRGuard",
-    reason: "[LVR Guard] JIT pattern score elevated, protection remains active.",
-    observedAtMs: 1700000000000,
-  },
-  {
-    id: "fallback-4",
-    event: "Rebalance",
-    reason: "[Engine] Delta exposure rebalanced back to target 2.0x profile.",
-    observedAtMs: 1700000000000,
-  },
-];
-
 const vaultPoolIdMap: Record<VaultKey, string> = {
   afWETH: "weth-usdc",
   afWBTC: "wbtc-usdc",
@@ -157,7 +130,7 @@ export function EarnSection() {
   const [actionTab, setActionTab] = useState<VaultActionTab>("deposit");
   const [vaultInput, setVaultInput] = useState("");
   const [pendingAction, setPendingAction] = useState<PendingEarnAction>(null);
-  const [guardianLogs, setGuardianLogs] = useState<GuardianLogItem[]>(fallbackGuardianLogs);
+  const [guardianLogs, setGuardianLogs] = useState<GuardianLogItem[]>([]);
   const [isGuardianLogsLoading, setIsGuardianLogsLoading] = useState(false);
   const [isGuardianLogsRefreshing, setIsGuardianLogsRefreshing] = useState(false);
   const guardianLogsInitializedRef = useRef(false);
@@ -643,7 +616,7 @@ export function EarnSection() {
 
   useEffect(() => {
     if (!selectedMarket) {
-      setGuardianLogs(fallbackGuardianLogs);
+      setGuardianLogs([]);
       setIsGuardianLogsLoading(false);
       setIsGuardianLogsRefreshing(false);
       guardianLogsInitializedRef.current = false;
@@ -651,7 +624,7 @@ export function EarnSection() {
     }
 
     if (!backendBaseUrl) {
-      setGuardianLogs(fallbackGuardianLogs);
+      setGuardianLogs([]);
       setIsGuardianLogsLoading(false);
       setIsGuardianLogsRefreshing(false);
       guardianLogsInitializedRef.current = false;
@@ -710,13 +683,13 @@ export function EarnSection() {
           : [];
 
         if (!abortController.signal.aborted) {
-          setGuardianLogs(items.length > 0 ? items : fallbackGuardianLogs);
+          setGuardianLogs(items);
           guardianLogsInitializedRef.current = true;
         }
       } catch (error) {
         if (!abortController.signal.aborted) {
           console.error("Failed to fetch AI Guardian logs", error);
-          setGuardianLogs(fallbackGuardianLogs);
+          setGuardianLogs([]);
           guardianLogsInitializedRef.current = true;
         }
       } finally {
@@ -988,23 +961,29 @@ export function EarnSection() {
                   </>
                 ) : (
                   <>
-                    {guardianLogs.map((log) => (
-                      <div key={log.id} className="space-y-0.5">
-                        <p className="font-mono text-xs text-emerald-700">{`> ${log.reason}`}</p>
-                        <p className="font-manrope text-[11px] text-neutral-500">
-                          {new Date(log.observedAtMs).toLocaleString("en-US", {
-                            hour12: false,
-                            month: "short",
-                            day: "2-digit",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                          {" | "}
-                          {log.event}
-                          {log.poolTag ? ` | ${log.poolTag}` : ""}
-                        </p>
-                      </div>
-                    ))}
+                    {guardianLogs.length === 0 ? (
+                      <p className="font-manrope text-xs text-neutral-500">
+                        No AI Guardian logs yet.
+                      </p>
+                    ) : (
+                      guardianLogs.map((log) => (
+                        <div key={log.id} className="space-y-0.5">
+                          <p className="font-mono text-xs text-emerald-700">{`> ${log.reason}`}</p>
+                          <p className="font-manrope text-[11px] text-neutral-500">
+                            {new Date(log.observedAtMs).toLocaleString("en-US", {
+                              hour12: false,
+                              month: "short",
+                              day: "2-digit",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                            {" | "}
+                            {log.event}
+                            {log.poolTag ? ` | ${log.poolTag}` : ""}
+                          </p>
+                        </div>
+                      ))
+                    )}
                     {isGuardianLogsRefreshing ? (
                       <div className="pt-1">
                         <Skeleton className="h-3 w-full" />
