@@ -15,13 +15,12 @@ Apollos is designed as a layered system:
   - User interaction for Earn, Credit Line, Bridge, and logs.
   - Reads onchain state via `viem`/`wagmi`.
   - Displays protocol metrics (TVL, APY, NAV-derived values, oracle references).
-- Backend & Automation Layer (`apollos-be`)
-  - Runs autonomous workers for Defender, Strategist, Accountant, and Reporter.
-  - Computes off-chain decisions and submits onchain transactions when thresholds are met.
-  - Persists AI/activity logs for UI consumption.
+- Backend & Report Layer (`apollos-be`)
+  - Receive report from Chainlink Runtime Environment.
+  - Set AI Guardian logs for Apollos Frontend.
 - Chainlink CRE Layer (`apollos-cre`)
   - Workflow-based automation model for modular role execution.
-  - Each workflow role can be simulated independently.
+  - Each workflow roles can be simulated independently.
 - Smart Contract Layer (`apollos-sc`)
   - Vaults, router, pool integration, fee hook, and feed cache.
   - Executes the final source-of-truth state transitions.
