@@ -13,8 +13,21 @@ import {
   useWriteContract,
 } from "wagmi";
 import { arbitrum, arbitrumSepolia } from "wagmi/chains";
-import { aaveAbi, chainlinkAggregatorAbi, erc20Abi, uniswapAbi, vaultAbi } from "@/lib/apollos-abi";
-import { apollosAddresses, toPoolKey, type VaultKey, vaultMarkets } from "@/lib/apollos";
+import {
+  aaveAbi,
+  chainlinkAggregatorAbi,
+  dataFeedsCacheAbi,
+  erc20Abi,
+  uniswapAbi,
+  vaultAbi,
+} from "@/lib/apollos-abi";
+import {
+  apollosAddresses,
+  apollosVarIds,
+  toPoolKey,
+  type VaultKey,
+  vaultMarkets,
+} from "@/lib/apollos";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const DEFAULT_POOL_BORROW_CAP_USDC = 1_000_000;
@@ -31,6 +44,20 @@ const chainlinkArbitrumFeeds: Record<"WETH" | "WBTC" | "LINK", `0x${string}`> = 
   WETH: "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612",
   WBTC: "0x6ce185860a4963106506C203335A2910413708e9",
   LINK: "0x86E53CF1B870786351Da77A57575e79CB55812CB",
+};
+
+function bigintToBytes32(value: bigint): `0x${string}` {
+  if (value < BigInt(0)) {
+    throw new Error("VAR data id must be non-negative");
+  }
+  const normalized = value.toString(16).padStart(64, "0");
+  return `0x${normalized}`;
+}
+
+const varIdsBySymbol: Record<"WETH" | "WBTC" | "LINK", `0x${string}`> = {
+  WETH: bigintToBytes32(apollosVarIds.weth),
+  WBTC: bigintToBytes32(apollosVarIds.wbtc),
+  LINK: bigintToBytes32(apollosVarIds.link),
 };
 
 type DetailTab = "auto" | "stake";
@@ -74,6 +101,10 @@ type EarnMarketData = {
   tvlPrimary: string;
   tvlSecondary: string;
   oracleFeedAddress: `0x${string}`;
+  varDataId: `0x${string}`;
+  varBps: number;
+  varPercent: number;
+  varUpdatedAtMs: number;
 };
 
 function formatUsd(value: number, maximumFractionDigits = 2) {
@@ -194,6 +225,13 @@ export function EarnSection() {
       functionName: "getSharePrice" as const,
       chainId: arbitrumSepolia.id,
     },
+    {
+      address: apollosAddresses.dataFeedsCache,
+      abi: dataFeedsCacheAbi,
+      functionName: "latestRoundData" as const,
+      args: [varIdsBySymbol[market.symbol]],
+      chainId: arbitrumSepolia.id,
+    },
   ]);
 
   const { data, isLoading, refetch: refetchMarkets } = useReadContracts({
@@ -206,7 +244,7 @@ export function EarnSection() {
 
   const earnMarkets = useMemo<EarnMarketData[]>(() => {
     return vaultMarkets.map((market, index) => {
-      const offset = index * 7;
+      const offset = index * 8;
       const totalAssetsRaw = (data?.[offset]?.result as bigint | undefined) ?? BigInt(0);
       const latestRoundData = (data?.[offset + 1]?.result as
         | readonly [bigint, bigint, bigint, bigint, bigint]
@@ -221,6 +259,17 @@ export function EarnSection() {
         | { reserve0: bigint; reserve1: bigint }
         | undefined);
       const sharePriceRaw = (data?.[offset + 6]?.result as bigint | undefined) ?? BigInt(0);
+      const varRoundData = (data?.[offset + 7]?.result as
+        | readonly [bigint, bigint, bigint, bigint, bigint]
+        | undefined);
+      const varBpsRaw =
+        varRoundData?.[1] && varRoundData[1] > BigInt(0) ? varRoundData[1] : BigInt(0);
+      const varBps = Number(varBpsRaw);
+      const varPercent = Number.isFinite(varBps) ? varBps / 100 : 0;
+      const varUpdatedAtMs =
+        varRoundData?.[3] && varRoundData[3] > BigInt(0)
+          ? Number(varRoundData[3]) * 1000
+          : 0;
 
       const assetAmount = Number(formatUnits(totalAssetsRaw, market.decimals));
       const usdPrice = Number(formatUnits(rawPrice, CHAINLINK_PRICE_DECIMALS));
@@ -280,6 +329,10 @@ export function EarnSection() {
         tvlPrimary: formatCompactToken(assetAmount, market.symbol),
         tvlSecondary: formatUsd(usdValue, 0),
         oracleFeedAddress: chainlinkArbitrumFeeds[market.symbol],
+        varDataId: varIdsBySymbol[market.symbol],
+        varBps,
+        varPercent,
+        varUpdatedAtMs,
       };
     });
   }, [data]);
@@ -644,8 +697,8 @@ export function EarnSection() {
           setIsGuardianLogsRefreshing(true);
         }
         const params = new URLSearchParams({
-          pool: selectedMarket.symbol,
-          limit: String(MAX_GUARDIAN_LOGS),
+          workflow: "apollos-reporter",
+          limit: "50",
         });
         const logsResponse = await fetch(`${backendBaseUrl}/api/reporter/logs?${params.toString()}`, {
           signal: abortController.signal,
@@ -679,6 +732,13 @@ export function EarnSection() {
                 poolTag: item.poolTag,
                 }))
               .filter((item) => item.reason.trim().length > 0)
+              .filter((item) => {
+                const poolTag = (item.poolTag ?? "").trim().toUpperCase();
+                if (poolTag.length === 0 || poolTag === "GLOBAL") {
+                  return true;
+                }
+                return poolTag === selectedMarket.symbol;
+              })
               .slice(0, MAX_GUARDIAN_LOGS)
           : [];
 
@@ -811,7 +871,7 @@ export function EarnSection() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <a
                 href={`${ARBISCAN_MAINNET_BASE}/${selectedMarket.oracleFeedAddress}`}
                 target="_blank"
@@ -853,6 +913,24 @@ export function EarnSection() {
                   {selectedMarket.deltaSpreadPct.toFixed(2)}%
                 </p>
               </div>
+
+              <a
+                href={`${ARBISCAN_SEPOLIA_BASE}/${apollosAddresses.dataFeedsCache}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group rounded-xl border border-black/10 bg-black/[0.03] px-4 py-3 transition-colors hover:bg-black/[0.05]"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-manrope text-xs text-neutral-600">VaR (95%)</p>
+                  <ArrowUpRight className="h-4 w-4 text-neutral-500 transition-colors group-hover:text-neutral-900" />
+                </div>
+                <p className="mt-1 font-syne text-2xl font-bold text-amber-700">
+                  {selectedMarket.varPercent.toFixed(2)}%
+                </p>
+                <p className="mt-1 font-manrope text-[11px] text-neutral-500">
+                  Risk floor from Chainlink VAR feed ({selectedMarket.varBps} bps)
+                </p>
+              </a>
             </div>
           </div>
         </section>
@@ -1312,7 +1390,12 @@ export function EarnSection() {
                         <span className="font-syne text-lg font-bold text-neutral-950">{market.symbol}</span>
                       </div>
 
-                      <span className="font-syne text-lg font-bold text-neutral-950">{market.apy}</span>
+                      <div>
+                        <p className="font-syne text-lg font-bold text-neutral-950">{market.apy}</p>
+                        <p className="font-manrope text-xs text-neutral-600">
+                          VaR 95%: {market.varPercent.toFixed(2)}%
+                        </p>
+                      </div>
 
                       <div>
                         <p className="font-syne text-lg font-bold text-neutral-950">{market.tvlPrimary}</p>

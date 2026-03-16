@@ -55,6 +55,10 @@ export const apollosAddresses = {
     "NEXT_PUBLIC_DATA_FEEDS_CACHE_ADDRESS",
     process.env.NEXT_PUBLIC_DATA_FEEDS_CACHE_ADDRESS,
   ),
+  workflowReceiver: requiredAddr(
+    "NEXT_PUBLIC_GENERIC_WORKFLOW_RECEIVER_ADDRESS",
+    process.env.NEXT_PUBLIC_GENERIC_WORKFLOW_RECEIVER_ADDRESS,
+  ),
   baseCcipBnm: requiredAddr(
     "NEXT_PUBLIC_BASE_CCIP_BNM_ADDRESS",
     process.env.NEXT_PUBLIC_BASE_CCIP_BNM_ADDRESS,
@@ -69,6 +73,12 @@ export const apollosNavIds = {
   weth: requiredBigInt("NEXT_PUBLIC_WETH_NAV_ID", process.env.NEXT_PUBLIC_WETH_NAV_ID),
   wbtc: requiredBigInt("NEXT_PUBLIC_WBTC_NAV_ID", process.env.NEXT_PUBLIC_WBTC_NAV_ID),
   link: requiredBigInt("NEXT_PUBLIC_LINK_NAV_ID", process.env.NEXT_PUBLIC_LINK_NAV_ID),
+} as const;
+
+export const apollosVarIds = {
+  weth: requiredBigInt("NEXT_PUBLIC_WETH_VAR_ID", process.env.NEXT_PUBLIC_WETH_VAR_ID),
+  wbtc: requiredBigInt("NEXT_PUBLIC_WBTC_VAR_ID", process.env.NEXT_PUBLIC_WBTC_VAR_ID),
+  link: requiredBigInt("NEXT_PUBLIC_LINK_VAR_ID", process.env.NEXT_PUBLIC_LINK_VAR_ID),
 } as const;
 
 export const ccipSelectors = {
