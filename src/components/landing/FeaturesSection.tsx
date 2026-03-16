@@ -2,19 +2,39 @@
 
 import { useRouter } from "next/navigation";
 import { motion, type MotionValue } from "framer-motion";
-import { fadeInRight } from "@/components/landing/animations";
-import { AnimatedSection } from "@/components/landing/AnimatedSection";
+import { clipReveal } from "@/components/landing/animations";
 
 interface FeaturesSectionProps {
   sectionImageY: MotionValue<number>;
 }
+
+const features = [
+  {
+    title: "Linear Yield",
+    desc: "Using a 2x Leverage Strategy from Aave to neutralize volatile asset price exposure.",
+    btnLabel: "Start Earning",
+    href: "/dashboard?tab=earn",
+  },
+  {
+    title: "Prevent LVR",
+    desc: "Chainlink Workflows to detect market volatility via Uniswap V4 Hooks.",
+    btnLabel: "See in Action",
+    href: null,
+  },
+  {
+    title: "Anti-MEV Bot",
+    desc: "Restricted deposit so only ApollosVault can add liquidity.",
+    btnLabel: "See Pools",
+    href: "/dashboard?tab=pools",
+  },
+];
 
 export function FeaturesSection({ sectionImageY }: FeaturesSectionProps) {
   const router = useRouter();
 
   return (
     <section className="min-h-screen relative flex flex-col overflow-hidden">
-      {/* Background Image - Greek Statue with Parallax */}
+      {/* Background Image Container - Reduced image width prominence */}
       <motion.div
         className="absolute inset-0 overflow-hidden pointer-events-none"
         style={{ y: sectionImageY }}
@@ -22,109 +42,51 @@ export function FeaturesSection({ sectionImageY }: FeaturesSectionProps) {
         <img
           src="/images/Background-section2.webp"
           alt="Greek Statue"
-          className="absolute h-[105%] w-auto object-cover"
-          style={{
-            left: "0",
-            top: "-3%",
-          }}
+          className="absolute h-[100%] w-full object-cover left-[-30%] sm:left-[-15%] md:left-[-10%] lg:left-0 opacity-90"
+          style={{ maxWidth: "45%" }} 
         />
       </motion.div>
 
-      {/* Features Content */}
-      <div className="relative z-10 flex-1 flex flex-col justify-center px-6 sm:px-8 lg:px-11 py-16">
-        {/* Right-aligned content */}
-        <div className="ml-auto w-full max-w-[500px] lg:mr-[10%] space-y-16 lg:space-y-20">
-          {/* Linear Yield Section */}
-          <AnimatedSection>
+      {/* Features Content - Expanded text area with tighter vertical alignment */}
+      <div className="relative z-10 flex-1 flex flex-col justify-center px-6 sm:px-10 lg:px-16 py-12">
+        {/* Right-aligned content - Significantly tightened spacing */}
+        <div className="ml-auto w-full max-w-[650px] lg:mr-[5%] space-y-4 lg:space-y-6">
+          {features.map(({ title, desc, btnLabel, href }, i) => (
             <motion.div
-              className="space-y-4"
-              initial="hidden"
-              whileInView="visible"
+              key={title}
+              className="space-y-3 p-6 lg:p-8 rounded-[32px] bg-black/40 sm:bg-transparent backdrop-blur-md sm:backdrop-blur-none border border-white/10 sm:border-none shadow-2xl sm:shadow-none"
+              initial={{ opacity: 0, x: 100 }}
+              whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true, margin: "-100px" }}
-              variants={fadeInRight}
+              transition={{ 
+                duration: 1.2, 
+                delay: i * 0.3,
+                ease: [0.22, 1, 0.36, 1] 
+              }}
             >
               <motion.h2
-                className="font-syne font-extrabold text-black text-3xl sm:text-4xl lg:text-[40px]"
-                whileHover={{ x: 10 }}
-                transition={{ duration: 0.3 }}
+                className="font-syne font-extrabold text-white sm:text-black text-3xl sm:text-4xl lg:text-[44px] leading-tight"
+                whileHover={{ x: 15 }}
+                transition={{ duration: 0.4 }}
               >
-                Linear Yield
+                {title}
               </motion.h2>
-              <p className="font-manrope font-light text-neutral-950 text-xl sm:text-2xl">
-                Using a 2x Leverage Strategy from Aave to neutralize volatile asset price exposure.
+              <p className="font-manrope font-light text-neutral-100 sm:text-neutral-900 text-xl lg:text-2xl leading-relaxed max-w-[700px]">
+                {desc}
               </p>
               <motion.button
                 type="button"
-                onClick={() => router.push("/dashboard?tab=earn")}
-                className="w-[220px] sm:w-[240px] flex items-center justify-center bg-black/25 text-neutral-950 border border-neutral-950 rounded px-8 py-5 shadow-[12px_12px_12px_0px_rgba(0,0,0,0.50)] transition-colors duration-300 hover:bg-white hover:text-neutral-950 hover:border-neutral-950"
+                onClick={() => href && router.push(href)}
+                className="mt-2 w-full sm:w-auto min-w-[240px] flex items-center justify-center bg-white/10 sm:bg-black/25 text-white sm:text-neutral-950 border border-white/20 sm:border-neutral-950 px-10 py-5 shadow-[0px_15px_30px_0px_rgba(0,0,0,0.40)] sm:shadow-[0px_12px_20px_0px_rgba(0,0,0,0.30)] transition-all duration-500 hover:bg-white hover:text-neutral-950 hover:shadow-[0px_20px_40px_0px_rgba(0,0,0,0.50)]"
+                whileHover={{ scale: 1.05, y: -4 }}
+                whileTap={{ scale: 0.98 }}
               >
                 <span className="font-syne font-semibold text-xl sm:text-2xl">
-                  Start Earning
+                  {btnLabel}
                 </span>
               </motion.button>
             </motion.div>
-          </AnimatedSection>
-
-          {/* Prevent LVR Section */}
-          <AnimatedSection>
-            <motion.div
-              className="space-y-4"
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, margin: "-100px" }}
-              variants={fadeInRight}
-            >
-              <motion.h2
-                className="font-syne font-extrabold text-black text-3xl sm:text-4xl lg:text-[40px]"
-                whileHover={{ x: 10 }}
-                transition={{ duration: 0.3 }}
-              >
-                Prevent LVR
-              </motion.h2>
-              <p className="font-manrope font-light text-neutral-950 text-xl sm:text-2xl">
-                Chainlink Workflows to detect market volatility via Uniswap V4 Hooks.
-              </p>
-              <motion.button
-                type="button"
-                className="w-[220px] sm:w-[240px] flex items-center justify-center bg-black/25 text-neutral-950 border border-neutral-950 rounded px-8 py-5 shadow-[12px_12px_12px_0px_rgba(0,0,0,0.50)] transition-colors duration-300 hover:bg-white hover:text-neutral-950 hover:border-neutral-950"
-              >
-                <span className="font-syne font-semibold text-xl sm:text-2xl">
-                  See in Action
-                </span>
-              </motion.button>
-            </motion.div>
-          </AnimatedSection>
-
-          {/* Anti-MEV Bot Section */}
-          <AnimatedSection>
-            <motion.div
-              className="space-y-4"
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, margin: "-100px" }}
-              variants={fadeInRight}
-            >
-              <motion.h2
-                className="font-syne font-extrabold text-black text-3xl sm:text-4xl lg:text-[40px]"
-                whileHover={{ x: 10 }}
-                transition={{ duration: 0.3 }}
-              >
-                Anti-MEV Bot
-              </motion.h2>
-              <p className="font-manrope font-light text-neutral-950 text-xl sm:text-2xl">
-                Restricted deposit so only ApollosVault can add liquidity.
-              </p>
-              <motion.button
-                type="button"
-                onClick={() => router.push("/dashboard?tab=pools")}
-                className="w-[220px] sm:w-[240px] flex items-center justify-center bg-black/25 text-neutral-950 border border-neutral-950 rounded px-8 py-5 shadow-[12px_12px_12px_0px_rgba(0,0,0,0.50)] transition-colors duration-300 hover:bg-white hover:text-neutral-950 hover:border-neutral-950"
-              >
-                <span className="font-syne font-semibold text-xl sm:text-2xl">
-                  See Pools
-                </span>
-              </motion.button>
-            </motion.div>
-          </AnimatedSection>
+          ))}
         </div>
       </div>
     </section>

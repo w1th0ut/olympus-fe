@@ -40,9 +40,9 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  --font-playfair: 'Playfair Display', serif;
-  --font-syne: 'Syne', sans-serif;
-  --font-manrope: 'Manrope', sans-serif;
+  --font-playfair: "Playfair Display", serif;
+  --font-syne: "Syne", sans-serif;
+  --font-manrope: "Manrope", sans-serif;
 }
 
 :root {
@@ -97,7 +97,7 @@
   --muted: oklch(0.274 0.006 286.033);
   --muted-foreground: oklch(0.705 0.015 286.067);
   --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground:  oklch(0.92 0.005 65);
+  --accent-foreground: oklch(0.92 0.005 65);
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.985 0 0);
   --border: oklch(1 0 0 / 10%);
@@ -111,7 +111,7 @@
   --sidebar: oklch(0.21 0.006 285.885);
   --sidebar-foreground: oklch(0.85 0.005 65);
   --sidebar-accent: oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground:  oklch(0.985 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.9 0.005 65);
 }
@@ -122,7 +122,7 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: 'Manrope', sans-serif;
+    font-family: "Manrope", sans-serif;
   }
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),
@@ -183,15 +183,15 @@
 
 /* Font utilities */
 .font-playfair {
-  font-family: 'Playfair Display', serif;
+  font-family: "Playfair Display", serif;
 }
 
 .font-syne {
-  font-family: 'Syne', sans-serif;
+  font-family: "Syne", sans-serif;
 }
 
 .font-manrope {
-  font-family: 'Manrope', sans-serif;
+  font-family: "Manrope", sans-serif;
 }
 
 /* Noise Overlay Effect - Duo mode with black/white at 25% opacity */
@@ -225,19 +225,122 @@
 
 /* Alternative canvas-based noise for better performance */
 @keyframes noise-animation {
-  0% { transform: translate(0, 0); }
-  10% { transform: translate(-5%, -5%); }
-  20% { transform: translate(-10%, 5%); }
-  30% { transform: translate(5%, -10%); }
-  40% { transform: translate(-5%, 15%); }
-  50% { transform: translate(-10%, 5%); }
-  60% { transform: translate(15%, 0); }
-  70% { transform: translate(0, 10%); }
-  80% { transform: translate(-15%, 0); }
-  90% { transform: translate(10%, 5%); }
-  100% { transform: translate(5%, 0); }
+  0% {
+    transform: translate(0, 0);
+  }
+  10% {
+    transform: translate(-5%, -5%);
+  }
+  20% {
+    transform: translate(-10%, 5%);
+  }
+  30% {
+    transform: translate(5%, -10%);
+  }
+  40% {
+    transform: translate(-5%, 15%);
+  }
+  50% {
+    transform: translate(-10%, 5%);
+  }
+  60% {
+    transform: translate(15%, 0);
+  }
+  70% {
+    transform: translate(0, 10%);
+  }
+  80% {
+    transform: translate(-15%, 0);
+  }
+  90% {
+    transform: translate(10%, 5%);
+  }
+  100% {
+    transform: translate(5%, 0);
+  }
 }
 
 .noise-animated {
   animation: noise-animation 0.5s steps(10) infinite;
+}
+
+/* Smooth Scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Scroll Progress Bar */
+.scroll-progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #111111 0%, #555555 50%, #111111 100%);
+  transform-origin: left;
+  z-index: 99999;
+}
+
+/* Button Shimmer */
+@keyframes shimmer-sweep {
+  0% {
+    transform: translateX(-100%) skewX(-15deg);
+  }
+  100% {
+    transform: translateX(300%) skewX(-15deg);
+  }
+}
+
+.btn-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.35) 50%,
+    transparent 100%
+  );
+  animation: shimmer-sweep 2.8s ease-in-out infinite;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* Ripple on click */
+@keyframes ripple-out {
+  0% {
+    transform: scale(0);
+    opacity: 0.45;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+.ripple-circle {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+  animation: ripple-out 0.6s ease-out forwards;
+  pointer-events: none;
+}
+
+/* Partner Logo Hover Glow */
+.partner-logo-wrap {
+  transition:
+    transform 0.3s ease,
+    filter 0.3s ease;
+}
+.partner-logo-wrap:hover {
+  transform: scale(1.12) translateY(-4px);
+  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.25));
+}
+
+/* Orb Gradient Blob */
+.orb {
+  border-radius: 50%;
+  filter: blur(40px);
+  position: absolute;
+  pointer-events: none;
 }
