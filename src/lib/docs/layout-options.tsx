@@ -3,7 +3,7 @@ import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
 export function docsLayoutOptions(): BaseLayoutProps {
   return {
     nav: {
-      title: "Apollos Docs",
+      title: "Olympus Docs",
       url: "/docs",
     },
     links: [

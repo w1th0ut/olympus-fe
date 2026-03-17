@@ -5,9 +5,9 @@ import { motion } from "framer-motion";
 import { ArrowUpRight, CircleHelp } from "lucide-react";
 import { formatUnits, type Address } from "viem";
 import { useReadContracts } from "wagmi";
-import { arbitrum, arbitrumSepolia } from "wagmi/chains";
-import { aaveAbi, erc20Abi, uniswapAbi, vaultAbi } from "@/lib/apollos-abi";
-import { apollosAddresses, toPoolKey, vaultMarkets } from "@/lib/apollos";
+import { arbitrum, targetChain, targetExplorerAddressBase } from "@/lib/chains";
+import { aaveAbi, erc20Abi, uniswapAbi, vaultAbi } from "@/lib/olympus-abi";
+import { olympusAddresses, toPoolKey, vaultMarkets } from "@/lib/olympus";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const HEALTH_RANGE_LABELS = {
@@ -30,12 +30,14 @@ function optionalAddress(value: string | undefined): Address | undefined {
   return value as Address;
 }
 
-const AAVE_ARB_USDC_A_TOKEN = optionalAddress(process.env.NEXT_PUBLIC_AAVE_ARB_USDC_A_TOKEN);
-const AAVE_ARB_USDC_VARIABLE_DEBT_TOKEN = optionalAddress(
-  process.env.NEXT_PUBLIC_AAVE_ARB_USDC_VARIABLE_DEBT_TOKEN,
+const AAVE_USDC_A_TOKEN = optionalAddress(process.env.NEXT_PUBLIC_AAVE_USDC_A_TOKEN);
+const AAVE_USDC_VARIABLE_DEBT_TOKEN = optionalAddress(
+  process.env.NEXT_PUBLIC_AAVE_USDC_VARIABLE_DEBT_TOKEN,
 );
 const AAVE_RESERVE_OVERVIEW_URL = process.env.NEXT_PUBLIC_AAVE_RESERVE_OVERVIEW_URL;
-const CREDIT_LINE_ORACLE_URL = "https://arbiscan.io/address/0x6200A5122Af8D5D9e69f4d526311Cd85241ACeC9";
+const CREDIT_LINE_ORACLE_URL =
+  process.env.NEXT_PUBLIC_CREDIT_LINE_ORACLE_URL ??
+  `${targetExplorerAddressBase}/0x6200A5122Af8D5D9e69f4d526311Cd85241ACeC9`;
 const USDC_DECIMALS = 6;
 const SUPPLY_CAP_M = 512.3;
 const BORROW_CAP_M = 425.6;
@@ -114,58 +116,58 @@ function buildHealthSeries(baseHealth: number, range: HealthRange) {
 export function LendBorrowMonitorSection() {
   const [healthRange, setHealthRange] = useState<HealthRange>("7d");
   const hasAaveReserveContracts = Boolean(
-    AAVE_ARB_USDC_A_TOKEN && AAVE_ARB_USDC_VARIABLE_DEBT_TOKEN,
+    AAVE_USDC_A_TOKEN && AAVE_USDC_VARIABLE_DEBT_TOKEN,
   );
 
   const contracts = [
     {
-      address: apollosAddresses.aavePool,
+      address: olympusAddresses.aavePool,
       abi: aaveAbi,
       functionName: "assetPrices" as const,
-      args: [apollosAddresses.usdc],
-      chainId: arbitrumSepolia.id,
+      args: [olympusAddresses.usdc],
+      chainId: targetChain.id,
     },
     {
-      address: apollosAddresses.usdc,
+      address: olympusAddresses.usdc,
       abi: erc20Abi,
       functionName: "balanceOf" as const,
-      args: [apollosAddresses.aavePool],
-      chainId: arbitrumSepolia.id,
+      args: [olympusAddresses.aavePool],
+      chainId: targetChain.id,
     },
     ...vaultMarkets.flatMap((market) => [
       {
-        address: apollosAddresses.aavePool,
+        address: olympusAddresses.aavePool,
         abi: aaveAbi,
         functionName: "getUserDebt" as const,
-        args: [market.vaultAddress, apollosAddresses.usdc],
-        chainId: arbitrumSepolia.id,
+        args: [market.vaultAddress, olympusAddresses.usdc],
+        chainId: targetChain.id,
       },
       {
-        address: apollosAddresses.aavePool,
+        address: olympusAddresses.aavePool,
         abi: aaveAbi,
         functionName: "getCreditLimit" as const,
-        args: [market.vaultAddress, apollosAddresses.usdc],
-        chainId: arbitrumSepolia.id,
+        args: [market.vaultAddress, olympusAddresses.usdc],
+        chainId: targetChain.id,
       },
       {
         address: market.vaultAddress,
         abi: vaultAbi,
         functionName: "totalAssets" as const,
-        chainId: arbitrumSepolia.id,
+        chainId: targetChain.id,
       },
       {
-        address: apollosAddresses.uniswapPool,
+        address: olympusAddresses.uniswapPool,
         abi: uniswapAbi,
         functionName: "getPoolStateByKey" as const,
-        args: [toPoolKey(market.tokenAddress, apollosAddresses.usdc)],
-        chainId: arbitrumSepolia.id,
+        args: [toPoolKey(market.tokenAddress, olympusAddresses.usdc)],
+        chainId: targetChain.id,
       },
       {
-        address: apollosAddresses.aavePool,
+        address: olympusAddresses.aavePool,
         abi: aaveAbi,
         functionName: "assetPrices" as const,
         args: [market.tokenAddress],
-        chainId: arbitrumSepolia.id,
+        chainId: targetChain.id,
       },
     ]),
   ];
@@ -182,13 +184,13 @@ export function LendBorrowMonitorSection() {
     contracts: hasAaveReserveContracts
       ? [
           {
-            address: AAVE_ARB_USDC_A_TOKEN!,
+            address: AAVE_USDC_A_TOKEN!,
             abi: erc20Abi,
             functionName: "totalSupply",
             chainId: arbitrum.id,
           },
           {
-            address: AAVE_ARB_USDC_VARIABLE_DEBT_TOKEN!,
+            address: AAVE_USDC_VARIABLE_DEBT_TOKEN!,
             abi: erc20Abi,
             functionName: "totalSupply",
             chainId: arbitrum.id,
@@ -230,7 +232,7 @@ export function LendBorrowMonitorSection() {
       const marketNetAssetAmount = Number(formatUnits(totalAssetsRaw, market.decimals));
 
       const isBaseCurrency0 =
-        market.tokenAddress.toLowerCase() < apollosAddresses.usdc.toLowerCase();
+        market.tokenAddress.toLowerCase() < olympusAddresses.usdc.toLowerCase();
       const reserveBaseRaw = isBaseCurrency0
         ? (poolState?.reserve0 ?? BigInt(0))
         : (poolState?.reserve1 ?? BigInt(0));
@@ -398,7 +400,7 @@ export function LendBorrowMonitorSection() {
         <div className="h-[3px] w-full rounded-full bg-black/30" />
 
         <section className="space-y-4">
-          <h2 className="font-syne text-xl font-bold text-neutral-950 sm:text-2xl">Apollos Vault Stats</h2>
+          <h2 className="font-syne text-xl font-bold text-neutral-950 sm:text-2xl">Olympus Vault Stats</h2>
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             {Array.from({ length: 2 }).map((_, index) => (
               <article
@@ -470,7 +472,7 @@ export function LendBorrowMonitorSection() {
                         href={metric.href}
                         target="_blank"
                         rel="noopener noreferrer"
-                        aria-label={`Open ${metric.label} contract on Arbiscan`}
+                        aria-label={`Open ${metric.label} contract on Polkadot Hub Explorer`}
                         className="inline-flex items-center text-neutral-600 transition-colors hover:text-neutral-950"
                       >
                         <ArrowUpRight className="h-3.5 w-3.5" />
@@ -555,7 +557,7 @@ export function LendBorrowMonitorSection() {
       <div className="h-[3px] w-full rounded-full bg-black/30" />
 
       <section className="space-y-4">
-        <h2 className="font-syne text-xl font-bold text-neutral-950 sm:text-2xl">Apollos Vault Stats</h2>
+        <h2 className="font-syne text-xl font-bold text-neutral-950 sm:text-2xl">Olympus Vault Stats</h2>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">

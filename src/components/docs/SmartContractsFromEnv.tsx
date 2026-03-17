@@ -1,4 +1,6 @@
-type ExplorerKind = "arb-sepolia" | "base-sepolia";
+import { targetExplorerAddressBase } from "@/lib/chains";
+
+type ExplorerKind = "polkadot-hub-testnet" | "base-sepolia";
 
 type ContractRow = {
   label: string;
@@ -7,7 +9,7 @@ type ContractRow = {
 };
 
 const EXPLORER_BASE: Record<ExplorerKind, string> = {
-  "arb-sepolia": "https://sepolia.arbiscan.io/address/",
+  "polkadot-hub-testnet": `${targetExplorerAddressBase}/`,
   "base-sepolia": "https://sepolia.basescan.org/address/",
 };
 
@@ -18,36 +20,36 @@ const SECTIONS: Array<{
   {
     title: "Mock Tokens",
     rows: [
-      { label: "WETH", envKey: "NEXT_PUBLIC_WETH_ADDRESS", explorer: "arb-sepolia" },
-      { label: "WBTC", envKey: "NEXT_PUBLIC_WBTC_ADDRESS", explorer: "arb-sepolia" },
-      { label: "LINK", envKey: "NEXT_PUBLIC_LINK_ADDRESS", explorer: "arb-sepolia" },
-      { label: "USDC", envKey: "NEXT_PUBLIC_USDC_ADDRESS", explorer: "arb-sepolia" },
+      { label: "WETH", envKey: "NEXT_PUBLIC_WETH_ADDRESS", explorer: "polkadot-hub-testnet" },
+      { label: "WBTC", envKey: "NEXT_PUBLIC_WBTC_ADDRESS", explorer: "polkadot-hub-testnet" },
+      { label: "LINK", envKey: "NEXT_PUBLIC_LINK_ADDRESS", explorer: "polkadot-hub-testnet" },
+      { label: "USDC", envKey: "NEXT_PUBLIC_USDC_ADDRESS", explorer: "polkadot-hub-testnet" },
     ],
   },
   {
     title: "Core Contracts",
     rows: [
-      { label: "Factory", envKey: "NEXT_PUBLIC_FACTORY_ADDRESS", explorer: "arb-sepolia" },
-      { label: "WETH Vault", envKey: "NEXT_PUBLIC_WETH_VAULT_ADDRESS", explorer: "arb-sepolia" },
-      { label: "WBTC Vault", envKey: "NEXT_PUBLIC_WBTC_VAULT_ADDRESS", explorer: "arb-sepolia" },
-      { label: "LINK Vault", envKey: "NEXT_PUBLIC_LINK_VAULT_ADDRESS", explorer: "arb-sepolia" },
-      { label: "DataFeedsCache", envKey: "NEXT_PUBLIC_DATA_FEEDS_CACHE_ADDRESS", explorer: "arb-sepolia" },
-      { label: "Generic Workflow Receiver", envKey: "NEXT_PUBLIC_GENERIC_WORKFLOW_RECEIVER_ADDRESS", explorer: "arb-sepolia" },
-      { label: "LVR Hook", envKey: "NEXT_PUBLIC_LVR_HOOK_ADDRESS", explorer: "arb-sepolia" },
+      { label: "Factory", envKey: "NEXT_PUBLIC_FACTORY_ADDRESS", explorer: "polkadot-hub-testnet" },
+      { label: "WETH Vault", envKey: "NEXT_PUBLIC_WETH_VAULT_ADDRESS", explorer: "polkadot-hub-testnet" },
+      { label: "WBTC Vault", envKey: "NEXT_PUBLIC_WBTC_VAULT_ADDRESS", explorer: "polkadot-hub-testnet" },
+      { label: "LINK Vault", envKey: "NEXT_PUBLIC_LINK_VAULT_ADDRESS", explorer: "polkadot-hub-testnet" },
+      { label: "DataFeedsCache", envKey: "NEXT_PUBLIC_DATA_FEEDS_CACHE_ADDRESS", explorer: "polkadot-hub-testnet" },
+      { label: "Generic Workflow Receiver", envKey: "NEXT_PUBLIC_GENERIC_WORKFLOW_RECEIVER_ADDRESS", explorer: "polkadot-hub-testnet" },
+      { label: "LVR Hook", envKey: "NEXT_PUBLIC_LVR_HOOK_ADDRESS", explorer: "polkadot-hub-testnet" },
     ],
   },
   {
     title: "Mock Infrastructure",
     rows: [
-      { label: "Uniswap Pool", envKey: "NEXT_PUBLIC_UNISWAP_POOL_ADDRESS", explorer: "arb-sepolia" },
-      { label: "Aave Pool", envKey: "NEXT_PUBLIC_AAVE_POOL_ADDRESS", explorer: "arb-sepolia" },
+      { label: "Uniswap Pool", envKey: "NEXT_PUBLIC_UNISWAP_POOL_ADDRESS", explorer: "polkadot-hub-testnet" },
+      { label: "Aave Pool", envKey: "NEXT_PUBLIC_AAVE_POOL_ADDRESS", explorer: "polkadot-hub-testnet" },
     ],
   },
   {
     title: "CCIP Contracts",
     rows: [
-      { label: "Router", envKey: "NEXT_PUBLIC_ROUTER_ADDRESS", explorer: "arb-sepolia" },
-      { label: "CCIP Receiver", envKey: "NEXT_PUBLIC_CCIP_RECEIVER_ADDRESS", explorer: "arb-sepolia" },
+      { label: "Router", envKey: "NEXT_PUBLIC_ROUTER_ADDRESS", explorer: "polkadot-hub-testnet" },
+      { label: "CCIP Receiver", envKey: "NEXT_PUBLIC_CCIP_RECEIVER_ADDRESS", explorer: "polkadot-hub-testnet" },
       { label: "Base CCIP-BnM", envKey: "NEXT_PUBLIC_BASE_CCIP_BNM_ADDRESS", explorer: "base-sepolia" },
       { label: "Source Router", envKey: "NEXT_PUBLIC_SOURCE_ROUTER_ADDRESS", explorer: "base-sepolia" },
     ],

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useRef } from "react";
 import { motion, type MotionValue } from "framer-motion";
@@ -184,7 +184,7 @@ export function HeroSection({ heroImageY }: HeroSectionProps) {
               transition={{ duration: 0.6, delay: 1.2 }}
             >
               Engineered pools that reduce impermanent loss and prevent LVR on
-              Arbitrum Chain.
+              Polkadot Hub TestNet.
             </motion.p>
 
             {/* CTA Button — ripple */}

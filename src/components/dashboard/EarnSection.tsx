@@ -12,7 +12,7 @@ import {
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
-import { arbitrum, arbitrumSepolia } from "wagmi/chains";
+import { arbitrum, targetChain, targetExplorerAddressBase } from "@/lib/chains";
 import {
   aaveAbi,
   chainlinkAggregatorAbi,
@@ -20,19 +20,18 @@ import {
   erc20Abi,
   uniswapAbi,
   vaultAbi,
-} from "@/lib/apollos-abi";
+} from "@/lib/olympus-abi";
 import {
-  apollosAddresses,
-  apollosVarIds,
+  olympusAddresses,
+  olympusVarIds,
   toPoolKey,
   type VaultKey,
   vaultMarkets,
-} from "@/lib/apollos";
+} from "@/lib/olympus";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const DEFAULT_POOL_BORROW_CAP_USDC = 1_000_000;
-const ARBISCAN_SEPOLIA_BASE = "https://sepolia.arbiscan.io/address";
-const ARBISCAN_MAINNET_BASE = "https://arbiscan.io/address";
+const TARGET_EXPLORER_BASE = targetExplorerAddressBase;
 const STAKED_VAULT_ENABLED = false;
 const CONVERT_ENABLED = false;
 const SHARE_PRICE_DECIMALS = 18;
@@ -40,7 +39,7 @@ const CHAINLINK_PRICE_DECIMALS = 8;
 const MAX_GUARDIAN_LOGS = 5;
 const APY_ANNUALIZATION_WINDOW_DAYS = 30;
 
-const chainlinkArbitrumFeeds: Record<"WETH" | "WBTC" | "LINK", `0x${string}`> = {
+const chainlinkReferenceFeeds: Record<"WETH" | "WBTC" | "LINK", `0x${string}`> = {
   WETH: "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612",
   WBTC: "0x6ce185860a4963106506C203335A2910413708e9",
   LINK: "0x86E53CF1B870786351Da77A57575e79CB55812CB",
@@ -55,9 +54,9 @@ function bigintToBytes32(value: bigint): `0x${string}` {
 }
 
 const varIdsBySymbol: Record<"WETH" | "WBTC" | "LINK", `0x${string}`> = {
-  WETH: bigintToBytes32(apollosVarIds.weth),
-  WBTC: bigintToBytes32(apollosVarIds.wbtc),
-  LINK: bigintToBytes32(apollosVarIds.link),
+  WETH: bigintToBytes32(olympusVarIds.weth),
+  WBTC: bigintToBytes32(olympusVarIds.wbtc),
+  LINK: bigintToBytes32(olympusVarIds.link),
 };
 
 type DetailTab = "auto" | "stake";
@@ -150,7 +149,7 @@ function buildYieldSeries(apyValue: number) {
 export function EarnSection() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
-  const isOnArbitrum = chainId === arbitrumSepolia.id;
+  const isOnTargetChain = chainId === targetChain.id;
   const { switchChainAsync, isPending: isSwitchPending } = useSwitchChain();
   const { writeContractAsync, data: actionTxHash, isPending: isWritePending } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isActionSuccess } = useWaitForTransactionReceipt({
@@ -183,54 +182,54 @@ export function EarnSection() {
       address: market.vaultAddress,
       abi: vaultAbi,
       functionName: "totalAssets" as const,
-      chainId: arbitrumSepolia.id,
+      chainId: targetChain.id,
     },
     {
-      address: chainlinkArbitrumFeeds[market.symbol],
+      address: chainlinkReferenceFeeds[market.symbol],
       abi: chainlinkAggregatorAbi,
       functionName: "latestRoundData" as const,
       chainId: arbitrum.id,
     },
     {
-      address: apollosAddresses.aavePool,
+      address: olympusAddresses.aavePool,
       abi: aaveAbi,
       functionName: "getUserDebt" as const,
-      args: [market.vaultAddress, apollosAddresses.usdc],
-      chainId: arbitrumSepolia.id,
+      args: [market.vaultAddress, olympusAddresses.usdc],
+      chainId: targetChain.id,
     },
     {
-      address: apollosAddresses.aavePool,
+      address: olympusAddresses.aavePool,
       abi: aaveAbi,
       functionName: "getCreditLimit" as const,
-      args: [market.vaultAddress, apollosAddresses.usdc],
-      chainId: arbitrumSepolia.id,
+      args: [market.vaultAddress, olympusAddresses.usdc],
+      chainId: targetChain.id,
     },
     {
       address: market.tokenAddress,
       abi: erc20Abi,
       functionName: "balanceOf" as const,
       args: [address ?? "0x0000000000000000000000000000000000000000"],
-      chainId: arbitrumSepolia.id,
+      chainId: targetChain.id,
     },
     {
-      address: apollosAddresses.uniswapPool,
+      address: olympusAddresses.uniswapPool,
       abi: uniswapAbi,
       functionName: "getPoolStateByKey" as const,
-      args: [toPoolKey(market.tokenAddress, apollosAddresses.usdc)],
-      chainId: arbitrumSepolia.id,
+      args: [toPoolKey(market.tokenAddress, olympusAddresses.usdc)],
+      chainId: targetChain.id,
     },
     {
       address: market.vaultAddress,
       abi: vaultAbi,
       functionName: "getSharePrice" as const,
-      chainId: arbitrumSepolia.id,
+      chainId: targetChain.id,
     },
     {
-      address: apollosAddresses.dataFeedsCache,
+      address: olympusAddresses.dataFeedsCache,
       abi: dataFeedsCacheAbi,
       functionName: "latestRoundData" as const,
       args: [varIdsBySymbol[market.symbol]],
-      chainId: arbitrumSepolia.id,
+      chainId: targetChain.id,
     },
   ]);
 
@@ -274,7 +273,7 @@ export function EarnSection() {
       const assetAmount = Number(formatUnits(totalAssetsRaw, market.decimals));
       const usdPrice = Number(formatUnits(rawPrice, CHAINLINK_PRICE_DECIMALS));
       const isBaseCurrency0 =
-        market.tokenAddress.toLowerCase() < apollosAddresses.usdc.toLowerCase();
+        market.tokenAddress.toLowerCase() < olympusAddresses.usdc.toLowerCase();
       const reserveBaseRaw = isBaseCurrency0
         ? (poolState?.reserve0 ?? BigInt(0))
         : (poolState?.reserve1 ?? BigInt(0));
@@ -328,7 +327,7 @@ export function EarnSection() {
         walletBalance: Number(formatUnits(walletBalanceRaw, market.decimals)),
         tvlPrimary: formatCompactToken(assetAmount, market.symbol),
         tvlSecondary: formatUsd(usdValue, 0),
-        oracleFeedAddress: chainlinkArbitrumFeeds[market.symbol],
+        oracleFeedAddress: chainlinkReferenceFeeds[market.symbol],
         varDataId: varIdsBySymbol[market.symbol],
         varBps,
         varPercent,
@@ -452,27 +451,27 @@ export function EarnSection() {
               abi: vaultAbi,
               functionName: "previewDeposit" as const,
               args: [previewDepositArg],
-              chainId: arbitrumSepolia.id,
+              chainId: targetChain.id,
             },
             {
               address: selectedMarket.vaultAddress,
               abi: vaultAbi,
               functionName: "getSharePrice" as const,
-              chainId: arbitrumSepolia.id,
+              chainId: targetChain.id,
             },
             {
               address: selectedMarket.vaultAddress,
               abi: vaultAbi,
               functionName: "balanceOf" as const,
               args: [address ?? "0x0000000000000000000000000000000000000000"],
-              chainId: arbitrumSepolia.id,
+              chainId: targetChain.id,
             },
             {
               address: selectedMarket.vaultAddress,
               abi: vaultAbi,
               functionName: "previewDeposit" as const,
               args: [oneBaseUnitRaw],
-              chainId: arbitrumSepolia.id,
+              chainId: targetChain.id,
             },
             {
               address: selectedMarket.tokenAddress,
@@ -482,7 +481,7 @@ export function EarnSection() {
                 address ?? "0x0000000000000000000000000000000000000000",
                 selectedMarket.vaultAddress,
               ],
-              chainId: arbitrumSepolia.id,
+              chainId: targetChain.id,
             },
           ],
     allowFailure: true,
@@ -608,7 +607,7 @@ export function EarnSection() {
     !isActionBusy;
 
   const backendBaseUrl =
-    (process.env.NEXT_PUBLIC_APOLLOS_BE_URL ?? "").trim().replace(/\/$/, "");
+    (process.env.NEXT_PUBLIC_OLYMPUS_BE_URL ?? "").trim().replace(/\/$/, "");
 
   const selectedSpreadToneClass = selectedMarket
     ? selectedMarket.deltaSpreadPct > 0.5
@@ -639,8 +638,8 @@ export function EarnSection() {
                   : pendingAction === "withdraw"
                     ? "Withdrawing..."
                     : "Processing..."
-              : !isOnArbitrum
-                ? "Switch to Arbitrum"
+              : !isOnTargetChain
+                ? "Switch to Polkadot Hub TestNet"
                 : actionTab === "deposit" && needsDepositApproval
                   ? `Approve ${selectedMarket?.symbol ?? "Token"}`
                   : actionTab === "withdraw"
@@ -697,7 +696,7 @@ export function EarnSection() {
           setIsGuardianLogsRefreshing(true);
         }
         const params = new URLSearchParams({
-          workflow: "apollos-reporter",
+          workflow: "olympus-reporter",
           limit: "50",
         });
         const logsResponse = await fetch(`${backendBaseUrl}/api/reporter/logs?${params.toString()}`, {
@@ -789,8 +788,8 @@ export function EarnSection() {
     }
 
     try {
-      if (!isOnArbitrum) {
-        await switchChainAsync({ chainId: arbitrumSepolia.id });
+      if (!isOnTargetChain) {
+        await switchChainAsync({ chainId: targetChain.id });
         return;
       }
 
@@ -802,7 +801,7 @@ export function EarnSection() {
             abi: erc20Abi,
             functionName: "approve",
             args: [selectedMarket.vaultAddress, inputAmountRaw],
-            chainId: arbitrumSepolia.id,
+            chainId: targetChain.id,
           });
           return;
         }
@@ -813,7 +812,7 @@ export function EarnSection() {
           abi: vaultAbi,
           functionName: "deposit",
           args: [inputAmountRaw, address],
-          chainId: arbitrumSepolia.id,
+          chainId: targetChain.id,
         });
         return;
       }
@@ -824,7 +823,7 @@ export function EarnSection() {
         abi: vaultAbi,
         functionName: "withdraw",
         args: [inputAmountRaw, BigInt(0)],
-        chainId: arbitrumSepolia.id,
+        chainId: targetChain.id,
       });
     } catch (error) {
       setPendingAction(null);
@@ -856,10 +855,10 @@ export function EarnSection() {
                 <img src={selectedMarket.icon} alt="" className="h-12 w-12 object-contain" />
                 <div>
                   <h3 className="font-syne text-2xl font-bold text-neutral-950">
-                    Apollos {selectedMarket.symbol} Vault
+                    Olympus {selectedMarket.symbol} Vault
                   </h3>
                   <a
-                    href={`${ARBISCAN_SEPOLIA_BASE}/${selectedMarket.vaultAddress}`}
+                    href={`${TARGET_EXPLORER_BASE}/${selectedMarket.vaultAddress}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="mt-1 inline-flex items-center gap-1 break-all font-manrope text-sm text-neutral-600 transition-colors hover:text-neutral-900"
@@ -873,7 +872,7 @@ export function EarnSection() {
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <a
-                href={`${ARBISCAN_MAINNET_BASE}/${selectedMarket.oracleFeedAddress}`}
+                href={`${TARGET_EXPLORER_BASE}/${selectedMarket.oracleFeedAddress}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="group rounded-xl border border-black/10 bg-black/[0.03] px-4 py-3 transition-colors hover:bg-black/[0.05]"
@@ -915,7 +914,7 @@ export function EarnSection() {
               </div>
 
               <a
-                href={`${ARBISCAN_SEPOLIA_BASE}/${apollosAddresses.dataFeedsCache}`}
+                href={`${TARGET_EXPLORER_BASE}/${olympusAddresses.dataFeedsCache}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="group rounded-xl border border-black/10 bg-black/[0.03] px-4 py-3 transition-colors hover:bg-black/[0.05]"
@@ -1283,7 +1282,7 @@ export function EarnSection() {
                 <h4 className="font-syne text-sm font-bold text-neutral-900">Contract Info</h4>
                 <div className="mt-2 grid grid-cols-1 gap-2">
                   <a
-                    href={`${ARBISCAN_SEPOLIA_BASE}/${selectedMarket.vaultAddress}`}
+                    href={`${TARGET_EXPLORER_BASE}/${selectedMarket.vaultAddress}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center justify-between rounded-lg border border-black/10 px-3 py-2 font-manrope text-sm text-neutral-700 transition-colors hover:bg-black/[0.03]"
@@ -1292,7 +1291,7 @@ export function EarnSection() {
                     <ArrowUpRight className="h-4 w-4 text-neutral-500" />
                   </a>
                   <a
-                    href={`${ARBISCAN_SEPOLIA_BASE}/${apollosAddresses.router}`}
+                    href={`${TARGET_EXPLORER_BASE}/${olympusAddresses.router}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center justify-between rounded-lg border border-black/10 px-3 py-2 font-manrope text-sm text-neutral-700 transition-colors hover:bg-black/[0.03]"
@@ -1301,7 +1300,7 @@ export function EarnSection() {
                     <ArrowUpRight className="h-4 w-4 text-neutral-500" />
                   </a>
                   <a
-                    href={`${ARBISCAN_SEPOLIA_BASE}/${apollosAddresses.aavePool}`}
+                    href={`${TARGET_EXPLORER_BASE}/${olympusAddresses.aavePool}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center justify-between rounded-lg border border-black/10 px-3 py-2 font-manrope text-sm text-neutral-700 transition-colors hover:bg-black/[0.03]"

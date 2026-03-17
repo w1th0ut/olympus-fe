@@ -1,9 +1,9 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 
-const marqueeItems = ["APOLLOS FINANCE", "LINEARIZED", "NO LVR", "ANTI-MEV"];
+const marqueeItems = ["OLYMPUS FINANCE", "LINEARIZED", "NO LVR", "ANTI-MEV"];
 const repeatedItems = Array.from({ length: 6 }, () => marqueeItems).flat();
 
 function MarqueeRow() {

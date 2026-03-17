@@ -13,12 +13,12 @@ import {
   useWriteContract,
   usePublicClient,
 } from "wagmi";
-import { aaveAbi, erc20Abi, sourceRouterAbi, uniswapAbi, vaultAbi, ccipReceiverAbi } from "@/lib/apollos-abi";
-import { apollosAddresses, ccipSelectors, vaultMarkets, toPoolKey } from "@/lib/apollos";
-import { arbitrumSepolia, baseSepolia } from "wagmi/chains";
+import { aaveAbi, erc20Abi, sourceRouterAbi, uniswapAbi, vaultAbi, ccipReceiverAbi } from "@/lib/olympus-abi";
+import { olympusAddresses, ccipSelectors, vaultMarkets, toPoolKey } from "@/lib/olympus";
 import { useCCIPStatus } from "@/hooks/useCCIPStatus";
 import { useBridgeState } from "@/hooks/useBridgeState";
 import { Skeleton } from "@/components/ui/skeleton";
+import { baseSepolia, targetChain } from "@/lib/chains";
 
 type VaultKey = "afWETH" | "afWBTC" | "afLINK";
 const SHARE_PRICE_DECIMALS = 18;
@@ -29,7 +29,7 @@ const sourceChain = {
   networkTag: "L2",
   icon: "/icons/Logo-Base.png",
   eta: "15-20 min",
-  ccipLane: "BASE -> ARB",
+  ccipLane: "BASE -> POLKADOT HUB",
 } as const;
 
 const vaultTargets: {
@@ -44,21 +44,21 @@ const vaultTargets: {
     subtitle: "Linearized WETH yield",
     estimatePriceUsd: 2660,
     icon: "/icons/Logo-afWETH.png",
-    targetBaseAsset: apollosAddresses.weth,
+    targetBaseAsset: olympusAddresses.weth,
   },
   {
     key: "afWBTC",
     subtitle: "Linearized WBTC yield",
     estimatePriceUsd: 67414,
     icon: "/icons/Logo-afWBTC.png",
-    targetBaseAsset: apollosAddresses.wbtc,
+    targetBaseAsset: olympusAddresses.wbtc,
   },
   {
     key: "afLINK",
     subtitle: "Linearized LINK yield",
     estimatePriceUsd: 23.4,
     icon: "/icons/Logo-afLINK.png",
-    targetBaseAsset: apollosAddresses.link,
+    targetBaseAsset: olympusAddresses.link,
   },
 ];
 
@@ -112,7 +112,7 @@ export function BridgeSection() {
   const { state: bridgeState, updateState, clearState, isLoaded } = useBridgeState();
   const { messageId, step: activeStep } = bridgeState;
 
-  // CCIP Status Hook (polls on Arbitrum)
+  // CCIP Status Hook (polls on the target chain)
   const { status: ccipStatus } = useCCIPStatus(messageId);
 
   const selectedVault =
@@ -124,7 +124,7 @@ export function BridgeSection() {
       address: market.vaultAddress,
       abi: vaultAbi,
       functionName: "getSharePrice" as const,
-      chainId: arbitrumSepolia.id,
+      chainId: targetChain.id,
     })),
     allowFailure: true,
     query: {
@@ -153,9 +153,9 @@ export function BridgeSection() {
       return acc;
     }, fallback);
   }, [vaultApyReads]);
-  const selectedPoolKey = toPoolKey(selectedVault.targetBaseAsset, apollosAddresses.usdc);
+  const selectedPoolKey = toPoolKey(selectedVault.targetBaseAsset, olympusAddresses.usdc);
   const zeroForOneUsdcToBase =
-    selectedPoolKey.currency0.toLowerCase() === apollosAddresses.usdc.toLowerCase();
+    selectedPoolKey.currency0.toLowerCase() === olympusAddresses.usdc.toLowerCase();
 
   const amount = Number.parseFloat(amountInput);
   const parsedAmount = Number.isFinite(amount) && amount > 0 ? amount : 0;
@@ -176,43 +176,43 @@ export function BridgeSection() {
   } = useReadContracts({
     contracts: [
       {
-        address: apollosAddresses.sourceRouter,
+        address: olympusAddresses.sourceRouter,
         abi: sourceRouterAbi,
         functionName: "supportedChains",
-        args: [ccipSelectors.arbitrumSepolia],
+        args: [ccipSelectors.polkadotHubTestnet],
         chainId: baseSepolia.id,
       },
       {
-        address: apollosAddresses.sourceRouter,
+        address: olympusAddresses.sourceRouter,
         abi: sourceRouterAbi,
         functionName: "supportedAssets",
-        args: [apollosAddresses.baseCcipBnm],
+        args: [olympusAddresses.baseCcipBnm],
         chainId: baseSepolia.id,
       },
       {
-        address: apollosAddresses.baseCcipBnm,
+        address: olympusAddresses.baseCcipBnm,
         abi: erc20Abi,
         functionName: "balanceOf",
         args: [address ?? "0x0000000000000000000000000000000000000000"],
         chainId: baseSepolia.id,
       },
       {
-        address: apollosAddresses.baseCcipBnm,
+        address: olympusAddresses.baseCcipBnm,
         abi: erc20Abi,
         functionName: "allowance",
         args: [
           address ?? "0x0000000000000000000000000000000000000000",
-          apollosAddresses.sourceRouter,
+          olympusAddresses.sourceRouter,
         ],
         chainId: baseSepolia.id,
       },
       {
-        address: apollosAddresses.sourceRouter,
+        address: olympusAddresses.sourceRouter,
         abi: sourceRouterAbi,
         functionName: "getBridgeFee",
         args: [
-          ccipSelectors.arbitrumSepolia,
-          apollosAddresses.baseCcipBnm,
+          ccipSelectors.polkadotHubTestnet,
+          olympusAddresses.baseCcipBnm,
           amountRaw,
           BigInt(0),
           selectedVault.targetBaseAsset,
@@ -250,11 +250,11 @@ export function BridgeSection() {
   const { data: estimatorSwapReads, isLoading: isEstimatorSwapLoading } = useReadContracts({
     contracts: [
       {
-        address: apollosAddresses.uniswapPool,
+        address: olympusAddresses.uniswapPool,
         abi: uniswapAbi,
         functionName: "getSwapQuote",
         args: [selectedPoolKey, zeroForOneUsdcToBase, destinationUsdcEquivalentRaw],
-        chainId: arbitrumSepolia.id,
+        chainId: targetChain.id,
       },
     ],
     allowFailure: true,
@@ -271,7 +271,7 @@ export function BridgeSection() {
         abi: vaultAbi,
         functionName: "previewDeposit",
         args: [quotedBaseOutRaw],
-        chainId: arbitrumSepolia.id,
+        chainId: targetChain.id,
       },
     ],
     allowFailure: true,
@@ -294,7 +294,7 @@ export function BridgeSection() {
   const needsApproval = amountRaw > BigInt(0) && allowanceRaw < amountRaw;
   const baseCcipBnmBalance = Number(formatUnits(baseUsdcBalanceRaw, 18));
   const isOnBase = chainId === baseSepolia.id;
-  const isOnArbitrum = chainId === arbitrumSepolia.id;
+  const isOnTargetChain = chainId === targetChain.id;
   const hasEnoughBalance = amountRaw > BigInt(0) && amountRaw <= baseUsdcBalanceRaw;
   const canRoute = hasEnoughBalance && chainSupported && assetSupported;
 
@@ -347,10 +347,10 @@ export function BridgeSection() {
 
   const { isLoading: isZapConfirming, isSuccess: isZapSuccess } = useWaitForTransactionReceipt({
     hash: zapTxHash,
-    chainId: arbitrumSepolia.id,
+    chainId: targetChain.id,
   });
 
-  const publicClient = usePublicClient({ chainId: arbitrumSepolia.id });
+  const publicClient = usePublicClient({ chainId: targetChain.id });
 
   const isRouting = activeStep >= 0;
   const isBusy = isSwitchPending || isApproveActive || isBridgePending || isBridgeConfirming || isZapPending || isZapConfirming;
@@ -359,8 +359,8 @@ export function BridgeSection() {
   const isReadyToZap = ccipStatus === "stored";
   
   // Stabilize desired chain
-  const shouldUseArbitrumForClaim = isReadyToZap || isZapPending || isZapConfirming || isZapSuccess || activeStep >= 3;
-  const desiredChainId = shouldUseArbitrumForClaim ? arbitrumSepolia.id : baseSepolia.id;
+  const shouldUseTargetChainForClaim = isReadyToZap || isZapPending || isZapConfirming || isZapSuccess || activeStep >= 3;
+  const desiredChainId = shouldUseTargetChainForClaim ? targetChain.id : baseSepolia.id;
   
   const isOnDesiredChain = chainId === desiredChainId;
   const isWaitingForCCIP = Boolean(messageId || bridgeState.txHash || bridgeTxHash) && !isReadyToZap && !isCompleted;
@@ -437,10 +437,10 @@ export function BridgeSection() {
     try {
       if (needsApproval) {
         const hash = await writeApprove({
-          address: apollosAddresses.baseCcipBnm,
+          address: olympusAddresses.baseCcipBnm,
           abi: erc20Abi,
           functionName: "approve",
-          args: [apollosAddresses.sourceRouter, amountRaw],
+          args: [olympusAddresses.sourceRouter, amountRaw],
           chainId: baseSepolia.id,
         });
         return;
@@ -449,13 +449,13 @@ export function BridgeSection() {
       updateState({ step: 0 }); 
 
       await writeBridge({
-        address: apollosAddresses.sourceRouter,
+        address: olympusAddresses.sourceRouter,
         abi: sourceRouterAbi,
-        functionName: "bridgeToArbitrum",
+        functionName: "bridgeToPolkadotHub",
         args: [
-          apollosAddresses.baseCcipBnm,
+          olympusAddresses.baseCcipBnm,
           amountRaw,
-          ccipSelectors.arbitrumSepolia,
+          ccipSelectors.polkadotHubTestnet,
           address,
           BigInt(0), 
           selectedVault.targetBaseAsset,
@@ -471,9 +471,9 @@ export function BridgeSection() {
   const handleExecuteZap = async () => {
     if (!messageId || !isConnected || !publicClient) return;
     try {
-      if (!isOnArbitrum) {
+      if (!isOnTargetChain) {
         setIsAutoZapping(true);
-        await switchChainAsync({ chainId: arbitrumSepolia.id });
+        await switchChainAsync({ chainId: targetChain.id });
         return;
       }
 
@@ -484,11 +484,11 @@ export function BridgeSection() {
       const freshMinShares = BigInt(0);
 
       await writeZap({
-        address: apollosAddresses.ccipReceiver,
+        address: olympusAddresses.ccipReceiver,
         abi: ccipReceiverAbi,
         functionName: "executeZap",
         args: [messageId, freshMinShares], 
-        chainId: arbitrumSepolia.id,
+        chainId: targetChain.id,
         maxFeePerGas: bufferedMaxFee,
         maxPriorityFeePerGas: bufferedMaxPriority,
       });
@@ -538,10 +538,10 @@ export function BridgeSection() {
 
   // --- AUTO-ZAP EFFECT ---
   useEffect(() => {
-    if (isAutoZapping && isOnArbitrum && !isZapPending && !isZapConfirming && !isCompleted) {
+    if (isAutoZapping && isOnTargetChain && !isZapPending && !isZapConfirming && !isCompleted) {
       void handleExecuteZap();
     }
-  }, [isAutoZapping, isOnArbitrum, isZapPending, isZapConfirming, isCompleted]);
+  }, [isAutoZapping, isOnTargetChain, isZapPending, isZapConfirming, isCompleted]);
 
   const getButtonLabel = () => {
     if (!isConnected) return "Connect Wallet";
@@ -550,15 +550,15 @@ export function BridgeSection() {
       return "Zapping Successful!";
     }
     
-    if (isReadyToZap && !isOnArbitrum) {
-      return "Switch to Arbitrum to Zap";
+    if (isReadyToZap && !isOnTargetChain) {
+      return "Switch to Polkadot Hub TestNet to Zap";
     }
 
     if (isWaitingForCCIP) {
       return "Waiting for CCIP...";
     }
 
-    if (isReadyToZap && isOnArbitrum) {
+    if (isReadyToZap && isOnTargetChain) {
       return isZapPending || isZapConfirming ? "Executing Zap..." : "Claim & Zap Assets";
     }
 
@@ -576,7 +576,7 @@ export function BridgeSection() {
   };
 
   const isNetworkSwitchRequired = 
-    (isReadyToZap && !isOnArbitrum) || 
+    (isReadyToZap && !isOnTargetChain) || 
     (!messageId && !bridgeState.txHash && !bridgeTxHash && !isOnBase && !isReadyToZap && !isCompleted);
 
   const isActionEnabled =
@@ -618,7 +618,7 @@ export function BridgeSection() {
                 </span>
                 <ArrowRight className="h-4 w-4" />
                 <span className="rounded-lg border border-black/15 bg-white px-3 py-1 font-syne text-sm font-bold">
-                  Arbitrum
+                  Polkadot Hub TestNet
                 </span>
               </div>
             </div>
@@ -769,7 +769,7 @@ export function BridgeSection() {
                   </p>
                   <p className="mt-1 font-manrope text-xs leading-relaxed text-blue-700">
                     ⚠️ <strong>Important:</strong> Once your assets arrive on
-                    Arbitrum (Step 2 turns green), you must sign one final{" "}
+                    Polkadot Hub TestNet (Step 2 turns green), you must sign one final{" "}
                     <strong>"Claim & Zap"</strong> transaction to activate your
                     yield. Feel free to minimize this window, but don't close it
                     to stay updated.
@@ -914,7 +914,7 @@ export function BridgeSection() {
                   </p>
                 </div>
                 <p className="mt-1 font-manrope text-sm text-amber-700">
-                  Assets arrived on Arbitrum. Wallet will auto-switch for claim
+                  Assets arrived on Polkadot Hub TestNet. Wallet will auto-switch for claim
                   and return to Base after success.
                 </p>
               </div>

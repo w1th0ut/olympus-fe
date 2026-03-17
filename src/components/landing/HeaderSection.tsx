@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/components/landing/animations";
 
 const topNavItems = [
-  { label: "Security", href: "https://skynet.certik.com/projects/apollos-finance" },
+  { label: "Security", href: "https://skynet.certik.com/projects/olympus-finance" },
   { label: "Docs", href: "/docs" },
   { label: "Transparency", href: "/transparency" },
   { label: "Governance", href: "/governance" },
@@ -147,12 +147,12 @@ export function HeaderSection() {
         >
           <img
             src="/images/Logo-figma.webp"
-            alt="Apollos Finance Logo"
+            alt="Olympus Finance Logo"
             className="w-[50px] h-[62px] sm:w-[60px] sm:h-[75px] lg:w-[78px] lg:h-[97px] object-contain"
           />
           <div className="flex flex-col -space-y-2 lg:-space-y-4">
             <span className="font-playfair font-bold text-neutral-950 text-3xl sm:text-4xl lg:text-[64px] leading-none tracking-tight">
-              APOLLOS
+              OLYMPUS
             </span>
             <span className="font-playfair font-bold text-neutral-950 text-lg sm:text-xl lg:text-[32px] italic leading-tight pl-0.5">
               Finance

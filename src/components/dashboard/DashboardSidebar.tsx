@@ -17,7 +17,7 @@ interface DashboardSidebarProps<TKey extends string = string> {
 const socialLinks = [
   {
     label: "GitHub",
-    href: "https://github.com/Apollos-Finance",
+    href: "https://github.com/Olympus-Finance",
     icon: "/icons/Logo-Github.png",
   },
   {
@@ -43,12 +43,12 @@ export function DashboardSidebar<TKey extends string>({
         <Link href="/" className="flex items-center gap-3">
           <img
             src="/images/Logo-figma.webp"
-            alt="Apollos Finance Logo"
+            alt="Olympus Finance Logo"
             className="h-12 w-auto object-contain"
           />
           <div className="flex flex-col -space-y-1">
             <span className="font-playfair font-bold text-neutral-950 text-2xl leading-none">
-              APOLLOS
+              OLYMPUS
             </span>
             <span className="font-playfair font-bold text-neutral-950 text-base italic leading-tight">
               Finance

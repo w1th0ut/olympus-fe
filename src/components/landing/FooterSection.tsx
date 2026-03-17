@@ -1,17 +1,17 @@
-﻿"use client";
+"use client";
 
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/components/landing/animations";
 
 const footerNavLinks = [
-  { label: "Security", href: "https://skynet.certik.com/projects/apollos-finance" },
+  { label: "Security", href: "https://skynet.certik.com/projects/olympus-finance" },
   { label: "Documentation", href: "/docs" },
   { label: "Transparency", href: "/transparency" },
   { label: "Governance", href: "/governance" },
 ];
 
 const footerSocialLinks = [
-  { label: "GitHub", href: "https://github.com/Apollos-Finance" },
+  { label: "GitHub", href: "https://github.com/Olympus-Finance" },
   { label: "X (Twitter)", href: "https://x.com" },
   { label: "Discord", href: "https://discord.com" },
   { label: "Telegram", href: "https://telegram.org" },
@@ -32,12 +32,12 @@ export function FooterSection() {
           <motion.div className="flex items-center gap-2" whileHover={{ scale: 1.02 }}>
             <img
               src="/images/Logo-figma.webp"
-              alt="Apollos Finance Logo"
+              alt="Olympus Finance Logo"
               className="w-[50px] h-[62px] sm:w-[60px] sm:h-[75px] object-contain"
             />
             <div className="flex flex-col -space-y-2">
               <span className="font-playfair font-bold text-neutral-950 text-2xl sm:text-3xl lg:text-4xl leading-none tracking-tight">
-                APOLLOS
+                OLYMPUS
               </span>
               <span className="font-playfair font-bold text-neutral-950 text-base sm:text-lg lg:text-xl italic leading-tight pl-0.5">
                 Finance
@@ -80,12 +80,12 @@ export function FooterSection() {
         >
           <p className="font-syne font-bold text-neutral-950 text-base sm:text-lg">Contact Us :</p>
           <motion.a
-            href="mailto:help@apollos.finance"
+            href="mailto:help@olympus.finance"
             className="font-manrope font-light text-neutral-950 text-base sm:text-lg"
             whileHover={{ color: "#666", x: 5 }}
             transition={{ duration: 0.3 }}
           >
-            help@apollos.finance
+            help@olympus.finance
           </motion.a>
         </motion.div>
       </div>

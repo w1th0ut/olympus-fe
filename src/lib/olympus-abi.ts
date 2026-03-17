@@ -30,7 +30,7 @@ export const sourceRouterAbi = parseAbi([
   "function supportedChains(uint64) view returns (bool)",
   "function supportedAssets(address) view returns (bool)",
   "function getBridgeFee(uint64,address,uint256,uint256,address) view returns (uint256)",
-  "function bridgeToArbitrum(address,uint256,uint64,address,uint256,address) payable returns (bytes32)",
+  "function bridgeToPolkadotHub(address,uint256,uint64,address,uint256,address) payable returns (bytes32)",
   "event CrossChainBridgeInitiated(bytes32 indexed messageId, uint64 indexed destinationChain, address indexed sender, address asset, uint256 amount, address receiver, address targetBaseAsset, uint256 minShares)",
 ]);
 

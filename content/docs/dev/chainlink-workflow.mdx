@@ -1,14 +1,14 @@
-﻿---
+---
 title: Chainlink Workflow
-description: Seven-workflow CRE blueprint as the Central Nervous System of Apollos Finance.
+description: Seven-workflow CRE blueprint as the Central Nervous System of Olympus Finance.
 ---
 
 # Chainlink Workflow
 
 ## The Autonomous Hedge Fund System
 
-Apollos Finance is not a static DeFi protocol that waits for user interaction.  
-With Chainlink CRE (Chainlink Runtime Environment), Apollos operates as a 24/7 autonomous system with seven parallel workflows designed to:
+Olympus Finance is not a static DeFi protocol that waits for user interaction.  
+With Chainlink CRE (Chainlink Runtime Environment), Olympus operates as a 24/7 autonomous system with seven parallel workflows designed to:
 
 - Protect LPs from real-time market risk.
 - Keep leveraged positions healthy.
@@ -18,7 +18,7 @@ With Chainlink CRE (Chainlink Runtime Environment), Apollos operates as a 24/7 a
 - Publish transparent machine decisions through AI logs.
 - Compute and publish VaR risk feeds for each vault.
 
-This architecture functions as the **Central Nervous System** of Apollos.
+This architecture functions as the **Central Nervous System** of Olympus.
 
 ## Workflow Map
 
@@ -155,7 +155,7 @@ Bridging every small deposit through CCIP is cost-inefficient.
 2. Monitor: cron reads adapter token balance.
 3. Threshold policy: if balance >= `batchThreshold`, execute bridge.
 4. Chainwrite path:
-   - Forwarder (source chain) -> GenericWorkflowReceiver -> `SourceRouter.bridgeToArbitrum(...)`.
+   - Forwarder (source chain) -> GenericWorkflowReceiver -> `SourceRouter.bridgeToPolkadotHub(...)`.
 5. CCIP delivery:
    - message and token transfer reach receiver on destination chain.
 

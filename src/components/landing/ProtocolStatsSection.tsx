@@ -4,20 +4,12 @@ import { useMemo, useEffect, useRef, useState } from "react";
 import { motion, useInView } from "framer-motion";
 import { formatUnits } from "viem";
 import { useReadContracts } from "wagmi";
-import { arbitrum, arbitrumSepolia } from "wagmi/chains";
-import { chainlinkAggregatorAbi, vaultAbi } from "@/lib/apollos-abi";
-import { vaultMarkets } from "@/lib/apollos";
+import { uniswapAbi, vaultAbi } from "@/lib/olympus-abi";
+import { olympusAddresses, toPoolKey, vaultMarkets } from "@/lib/olympus";
+import { targetChain } from "@/lib/chains";
 
-const CHAINLINK_PRICE_DECIMALS = 8;
 const SHARE_PRICE_DECIMALS = 18;
 const APY_ANNUALIZATION_WINDOW_DAYS = 30;
-
-const chainlinkArbitrumFeeds: Record<"WETH" | "WBTC" | "LINK", `0x${string}`> =
-  {
-    WETH: "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612",
-    WBTC: "0x6ce185860a4963106506C203335A2910413708e9",
-    LINK: "0x86E53CF1B870786351Da77A57575e79CB55812CB",
-  };
 
 function formatUsd(value: number) {
   return new Intl.NumberFormat("en-US", {
@@ -68,19 +60,20 @@ export function ProtocolStatsSection() {
       address: market.vaultAddress,
       abi: vaultAbi,
       functionName: "totalAssets" as const,
-      chainId: arbitrumSepolia.id,
+      chainId: targetChain.id,
     },
     {
-      address: chainlinkArbitrumFeeds[market.symbol],
-      abi: chainlinkAggregatorAbi,
-      functionName: "latestRoundData" as const,
-      chainId: arbitrum.id,
+      address: olympusAddresses.uniswapPool,
+      abi: uniswapAbi,
+      functionName: "getPoolStateByKey" as const,
+      args: [toPoolKey(market.tokenAddress, olympusAddresses.usdc)],
+      chainId: targetChain.id,
     },
     {
       address: market.vaultAddress,
       abi: vaultAbi,
       functionName: "getSharePrice" as const,
-      chainId: arbitrumSepolia.id,
+      chainId: targetChain.id,
     },
   ]);
 
@@ -98,18 +91,24 @@ export function ProtocolStatsSection() {
       const offset = index * 3;
       const totalAssetsRaw =
         (data?.[offset]?.result as bigint | undefined) ?? BigInt(0);
-      const latestRoundData = data?.[offset + 1]?.result as
-        | readonly [bigint, bigint, bigint, bigint, bigint]
+      const poolState = data?.[offset + 1]?.result as
+        | { reserve0: bigint; reserve1: bigint }
         | undefined;
       const sharePriceRaw =
         (data?.[offset + 2]?.result as bigint | undefined) ?? BigInt(0);
 
-      const rawPrice =
-        latestRoundData?.[1] && latestRoundData[1] > BigInt(0)
-          ? latestRoundData[1]
-          : BigInt(0);
-      const usdPrice = Number(formatUnits(rawPrice, CHAINLINK_PRICE_DECIMALS));
       const assetAmount = Number(formatUnits(totalAssetsRaw, market.decimals));
+      const isBaseCurrency0 =
+        market.tokenAddress.toLowerCase() < olympusAddresses.usdc.toLowerCase();
+      const reserveBaseRaw = isBaseCurrency0
+        ? (poolState?.reserve0 ?? BigInt(0))
+        : (poolState?.reserve1 ?? BigInt(0));
+      const reserveUsdcRaw = isBaseCurrency0
+        ? (poolState?.reserve1 ?? BigInt(0))
+        : (poolState?.reserve0 ?? BigInt(0));
+      const reserveBaseAmount = Number(formatUnits(reserveBaseRaw, market.decimals));
+      const reserveUsdcAmount = Number(formatUnits(reserveUsdcRaw, 6));
+      const usdPrice = reserveBaseAmount > 0 ? reserveUsdcAmount / reserveBaseAmount : 0;
       const usdValue = assetAmount * usdPrice;
       treasuryValueUsd += Number.isFinite(usdValue) ? usdValue : 0;
 

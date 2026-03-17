@@ -11,10 +11,10 @@ import {
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
-import { arbitrumSepolia } from "wagmi/chains";
-import { aaveAbi, erc20Abi, mockTokenAbi, uniswapAbi, vaultAbi } from "@/lib/apollos-abi";
-import { apollosAddresses, toPoolKey, vaultMarkets } from "@/lib/apollos";
+import { aaveAbi, erc20Abi, mockTokenAbi, uniswapAbi, vaultAbi } from "@/lib/olympus-abi";
+import { olympusAddresses, toPoolKey, vaultMarkets } from "@/lib/olympus";
 import { Skeleton } from "@/components/ui/skeleton";
+import { targetChain } from "@/lib/chains";
 
 const recentActivities = [
   {
@@ -23,7 +23,7 @@ const recentActivities = [
     asset: "afWETH",
     amount: "0.62 WETH",
     value: "$1,503.40",
-    detail: "Base -> Arbitrum",
+    detail: "Base -> Polkadot Hub TestNet",
     status: "Completed",
     timestamp: "2 mins ago",
   },
@@ -88,7 +88,7 @@ const walletAssets = [
   {
     symbol: "WETH",
     icon: "/icons/Logo-WETH.png",
-    address: apollosAddresses.weth,
+    address: olympusAddresses.weth,
     decimals: 18,
     faucetAmount: BigInt("10000000000000000"),
     faucetLabel: "0.01",
@@ -96,7 +96,7 @@ const walletAssets = [
   {
     symbol: "WBTC",
     icon: "/icons/Logo-WBTC.png",
-    address: apollosAddresses.wbtc,
+    address: olympusAddresses.wbtc,
     decimals: 8,
     faucetAmount: BigInt(50000),
     faucetLabel: "0.0005",
@@ -104,7 +104,7 @@ const walletAssets = [
   {
     symbol: "LINK",
     icon: "/icons/Logo-LINK.png",
-    address: apollosAddresses.link,
+    address: olympusAddresses.link,
     decimals: 18,
     faucetAmount: BigInt("2000000000000000000"),
     faucetLabel: "2",
@@ -112,7 +112,7 @@ const walletAssets = [
   {
     symbol: "USDC",
     icon: "/icons/Logo-USDC.png",
-    address: apollosAddresses.usdc,
+    address: olympusAddresses.usdc,
     decimals: 6,
     faucetAmount: BigInt(20000000),
     faucetLabel: "20",
@@ -125,7 +125,7 @@ type WalletAssetSymbol = WalletAsset["symbol"];
 export function MyBalancesSection() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
-  const isOnArbitrumSepolia = chainId === arbitrumSepolia.id;
+  const isOnTargetChain = chainId === targetChain.id;
   const activitiesPerPage = 2;
   const [activityPage, setActivityPage] = useState(1);
   const [activeFaucetSymbol, setActiveFaucetSymbol] = useState<WalletAssetSymbol | null>(null);
@@ -138,10 +138,10 @@ export function MyBalancesSection() {
 
   const contracts = [
     {
-      address: apollosAddresses.aavePool,
+      address: olympusAddresses.aavePool,
       abi: aaveAbi,
       functionName: "assetPrices" as const,
-      args: [apollosAddresses.usdc],
+      args: [olympusAddresses.usdc],
     },
     ...vaultMarkets.flatMap((market) => [
       {
@@ -156,16 +156,16 @@ export function MyBalancesSection() {
         functionName: "getSharePrice" as const,
       },
       {
-        address: apollosAddresses.aavePool,
+        address: olympusAddresses.aavePool,
         abi: aaveAbi,
         functionName: "assetPrices" as const,
         args: [market.tokenAddress],
       },
       {
-        address: apollosAddresses.aavePool,
+        address: olympusAddresses.aavePool,
         abi: aaveAbi,
         functionName: "getUserDebt" as const,
-        args: [market.vaultAddress, apollosAddresses.usdc],
+        args: [market.vaultAddress, olympusAddresses.usdc],
       },
       {
         address: market.vaultAddress,
@@ -173,10 +173,10 @@ export function MyBalancesSection() {
         functionName: "totalAssets" as const,
       },
       {
-        address: apollosAddresses.uniswapPool,
+        address: olympusAddresses.uniswapPool,
         abi: uniswapAbi,
         functionName: "getPoolStateByKey" as const,
-        args: [toPoolKey(market.tokenAddress, apollosAddresses.usdc)],
+        args: [toPoolKey(market.tokenAddress, olympusAddresses.usdc)],
       },
     ]),
   ];
@@ -304,13 +304,13 @@ export function MyBalancesSection() {
         const isCurrentFaucet = activeFaucetSymbol === asset.symbol;
         const isFaucetDisabled =
           !isConnected ||
-          !isOnArbitrumSepolia ||
+          !isOnTargetChain ||
           !hasStatus ||
           !canClaimFaucet ||
           (isFaucetBusy && !isCurrentFaucet);
 
         const faucetTooltip =
-          isConnected && isOnArbitrumSepolia && hasStatus && !canClaimFaucet
+          isConnected && isOnTargetChain && hasStatus && !canClaimFaucet
             ? `Cooldown ${formatCooldown(faucetCooldownSeconds)}`
             : "";
 
@@ -328,7 +328,7 @@ export function MyBalancesSection() {
       walletBalancesData,
       faucetStatusData,
       isConnected,
-      isOnArbitrumSepolia,
+      isOnTargetChain,
       isFaucetBusy,
       isFaucetStatusLoading,
       activeFaucetSymbol,
@@ -337,7 +337,7 @@ export function MyBalancesSection() {
 
 
   async function handleTokenFaucet(asset: WalletAsset) {
-    if (!isConnected || !isOnArbitrumSepolia || isFaucetBusy) return;
+    if (!isConnected || !isOnTargetChain || isFaucetBusy) return;
 
     const targetAsset = walletBalances.find((item) => item.symbol === asset.symbol);
     if (!targetAsset || targetAsset.isFaucetDisabled || !targetAsset.canClaimFaucet) return;
@@ -349,7 +349,7 @@ export function MyBalancesSection() {
         abi: mockTokenAbi,
         functionName: "faucetRaw",
         args: [asset.faucetAmount],
-        chainId: arbitrumSepolia.id,
+        chainId: targetChain.id,
       });
     } catch (error) {
       setActiveFaucetSymbol(null);

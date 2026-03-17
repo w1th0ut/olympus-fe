@@ -22,7 +22,17 @@ function requiredBigInt(envName: string, value: string | undefined): bigint {
   }
 }
 
-export const apollosAddresses = {
+function optionalBigInt(value: string | undefined): bigint {
+  if (!value) return BigInt(0);
+
+  try {
+    return BigInt(value);
+  } catch {
+    return BigInt(0);
+  }
+}
+
+export const olympusAddresses = {
   weth: requiredAddr("NEXT_PUBLIC_WETH_ADDRESS", process.env.NEXT_PUBLIC_WETH_ADDRESS),
   wbtc: requiredAddr("NEXT_PUBLIC_WBTC_ADDRESS", process.env.NEXT_PUBLIC_WBTC_ADDRESS),
   link: requiredAddr("NEXT_PUBLIC_LINK_ADDRESS", process.env.NEXT_PUBLIC_LINK_ADDRESS),
@@ -69,20 +79,22 @@ export const apollosAddresses = {
   ),
 } as const;
 
-export const apollosNavIds = {
+export const olympusNavIds = {
   weth: requiredBigInt("NEXT_PUBLIC_WETH_NAV_ID", process.env.NEXT_PUBLIC_WETH_NAV_ID),
   wbtc: requiredBigInt("NEXT_PUBLIC_WBTC_NAV_ID", process.env.NEXT_PUBLIC_WBTC_NAV_ID),
   link: requiredBigInt("NEXT_PUBLIC_LINK_NAV_ID", process.env.NEXT_PUBLIC_LINK_NAV_ID),
 } as const;
 
-export const apollosVarIds = {
+export const olympusVarIds = {
   weth: requiredBigInt("NEXT_PUBLIC_WETH_VAR_ID", process.env.NEXT_PUBLIC_WETH_VAR_ID),
   wbtc: requiredBigInt("NEXT_PUBLIC_WBTC_VAR_ID", process.env.NEXT_PUBLIC_WBTC_VAR_ID),
   link: requiredBigInt("NEXT_PUBLIC_LINK_VAR_ID", process.env.NEXT_PUBLIC_LINK_VAR_ID),
 } as const;
 
 export const ccipSelectors = {
-  arbitrumSepolia: BigInt("3478487238524512106"),
+  polkadotHubTestnet: optionalBigInt(
+    process.env.NEXT_PUBLIC_POLKADOT_HUB_CHAIN_SELECTOR,
+  ),
   baseSepolia: BigInt("10344971235874465080"),
 } as const;
 
@@ -102,8 +114,8 @@ export const vaultMarkets: Array<{
     symbol: "WETH",
     icon: "/icons/Logo-WETH.png",
     afIcon: "/icons/Logo-afWETH.png",
-    vaultAddress: apollosAddresses.vaultWeth,
-    tokenAddress: apollosAddresses.weth,
+    vaultAddress: olympusAddresses.vaultWeth,
+    tokenAddress: olympusAddresses.weth,
     decimals: 18,
   },
   {
@@ -111,8 +123,8 @@ export const vaultMarkets: Array<{
     symbol: "WBTC",
     icon: "/icons/Logo-WBTC.png",
     afIcon: "/icons/Logo-afWBTC.png",
-    vaultAddress: apollosAddresses.vaultWbtc,
-    tokenAddress: apollosAddresses.wbtc,
+    vaultAddress: olympusAddresses.vaultWbtc,
+    tokenAddress: olympusAddresses.wbtc,
     decimals: 8,
   },
   {
@@ -120,8 +132,8 @@ export const vaultMarkets: Array<{
     symbol: "LINK",
     icon: "/icons/Logo-LINK.png",
     afIcon: "/icons/Logo-afLINK.png",
-    vaultAddress: apollosAddresses.vaultLink,
-    tokenAddress: apollosAddresses.link,
+    vaultAddress: olympusAddresses.vaultLink,
+    tokenAddress: olympusAddresses.link,
     decimals: 18,
   },
 ];
@@ -134,6 +146,6 @@ export function toPoolKey(tokenA: Address, tokenB: Address) {
     currency1,
     fee: 3000,
     tickSpacing: 60,
-    hooks: apollosAddresses.lvrHook,
+    hooks: olympusAddresses.lvrHook,
   } as const;
 }

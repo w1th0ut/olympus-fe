@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { type Hex } from "viem";
 
-const STORAGE_KEY = "apollos_bridge_state_v1";
+const STORAGE_KEY = "olympus_bridge_state_v1";
 
 export type BridgeState = {
   messageId?: Hex;

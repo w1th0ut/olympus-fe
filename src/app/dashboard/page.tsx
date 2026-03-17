@@ -3,7 +3,6 @@
 import { Suspense, useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useChainId, useSwitchChain } from "wagmi";
-import { arbitrumSepolia } from "wagmi/chains";
 import {
   DashboardSidebar,
   type DashboardNavItem,
@@ -14,6 +13,7 @@ import { DexPoolsSection } from "@/components/dashboard/DexPoolsSection";
 import { EarnSection } from "@/components/dashboard/EarnSection";
 import { LendBorrowMonitorSection } from "@/components/dashboard/LendBorrowMonitorSection";
 import { MyBalancesSection } from "@/components/dashboard/MyBalancesSection";
+import { targetChain } from "@/lib/chains";
 
 const sectionMeta = {
   balances: {
@@ -96,11 +96,11 @@ function DashboardPageContent() {
     if (activeKey === "bridge") {
       return;
     }
-    if (chainId === arbitrumSepolia.id || isSwitchPending) {
+    if (chainId === targetChain.id || isSwitchPending) {
       return;
     }
 
-    void switchChainAsync({ chainId: arbitrumSepolia.id }).catch(() => {
+    void switchChainAsync({ chainId: targetChain.id }).catch(() => {
       // User can reject wallet switch request.
     });
   }, [activeKey, chainId, isSwitchPending, switchChainAsync]);

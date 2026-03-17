@@ -1,27 +1,27 @@
 ---
 title: Technical Flow
-description: System architecture, core concepts, contract architecture, and math foundation of Apollos.
+description: System architecture, core concepts, contract architecture, and math foundation of Olympus.
 ---
 
 # Technical Flow
 
-This page explains how Apollos works from architecture, protocol design, contracts, and math.
+This page explains how Olympus works from architecture, protocol design, contracts, and math.
 
 ## 🛠️System Architecture
 
-Apollos is designed as a layered system:
+Olympus is designed as a layered system:
 
-- Frontend Layer (`apollos-fe`)
+- Frontend Layer (`olympus-fe`)
   - User interaction for Earn, Credit Line, Bridge, and logs.
   - Reads onchain state via `viem`/`wagmi`.
   - Displays protocol metrics (TVL, APY, NAV-derived values, oracle references).
-- Backend & Report Layer (`apollos-be`)
+- Backend & Report Layer (`olympus-be`)
   - Receive report from Chainlink Runtime Environment.
-  - Set AI Guardian logs for Apollos Frontend.
-- Chainlink CRE Layer (`apollos-cre`)
+  - Set AI Guardian logs for Olympus Frontend.
+- Chainlink CRE Layer (`olympus-cre`)
   - Workflow-based automation model for modular role execution.
   - Each workflow roles can be simulated independently.
-- Smart Contract Layer (`apollos-sc`)
+- Smart Contract Layer (`olympus-sc`)
   - Vaults, router, pool integration, fee hook, and feed cache.
   - Executes the final source-of-truth state transitions.
 

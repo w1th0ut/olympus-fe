@@ -2,21 +2,21 @@
 
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import { http } from "wagmi";
-import { arbitrum, arbitrumSepolia, baseSepolia } from "wagmi/chains";
-
-export const targetChain = arbitrumSepolia;
+import { baseSepolia, targetChain } from "./chains";
 
 const walletConnectProjectId =
   process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "REPLACE_WITH_PROJECT_ID";
 
 export const wagmiConfig = getDefaultConfig({
-  appName: "Apollos Finance",
+  appName: "Olympus Finance",
   projectId: walletConnectProjectId,
-  chains: [arbitrumSepolia, baseSepolia, arbitrum],
+  chains: [targetChain, baseSepolia],
   transports: {
-    [arbitrumSepolia.id]: http(process.env.NEXT_PUBLIC_ARB_RPC_URL),
+    [targetChain.id]: http(
+      process.env.NEXT_PUBLIC_POLKADOT_HUB_RPC_URL ??
+        targetChain.rpcUrls.default.http[0],
+    ),
     [baseSepolia.id]: http(process.env.NEXT_PUBLIC_BASE_RPC_URL),
-    [arbitrum.id]: http(process.env.NEXT_PUBLIC_ARB_MAINNET_RPC_URL ?? "https://arb1.arbitrum.io/rpc"),
   },
   ssr: false,
 });

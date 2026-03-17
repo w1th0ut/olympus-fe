@@ -21,10 +21,10 @@ import {
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
-import { arbitrumSepolia } from "wagmi/chains";
-import { aaveAbi, erc20Abi, uniswapAbi } from "@/lib/apollos-abi";
-import { apollosAddresses, toPoolKey } from "@/lib/apollos";
+import { aaveAbi, erc20Abi, uniswapAbi } from "@/lib/olympus-abi";
+import { olympusAddresses, toPoolKey } from "@/lib/olympus";
 import { Skeleton } from "@/components/ui/skeleton";
+import { targetChain } from "@/lib/chains";
 
 type Timeframe = "1H" | "1D" | "1W" | "1M" | "1Y" | "ALL";
 type MetricMode = "Price" | "Volume";
@@ -134,9 +134,9 @@ const pools: PoolRow[] = [
 ];
 
 const poolMeta: Record<string, { tokenAddress: Address; baseDecimals: number; baseSymbol: "WETH" | "WBTC" | "LINK" }> = {
-  "weth-usdc": { tokenAddress: apollosAddresses.weth, baseDecimals: 18, baseSymbol: "WETH" },
-  "wbtc-usdc": { tokenAddress: apollosAddresses.wbtc, baseDecimals: 8, baseSymbol: "WBTC" },
-  "link-usdc": { tokenAddress: apollosAddresses.link, baseDecimals: 18, baseSymbol: "LINK" },
+  "weth-usdc": { tokenAddress: olympusAddresses.weth, baseDecimals: 18, baseSymbol: "WETH" },
+  "wbtc-usdc": { tokenAddress: olympusAddresses.wbtc, baseDecimals: 8, baseSymbol: "WBTC" },
+  "link-usdc": { tokenAddress: olympusAddresses.link, baseDecimals: 18, baseSymbol: "LINK" },
 };
 
 const timeframeButtons: Timeframe[] = ["1H", "1D", "1W", "1M", "1Y", "ALL"];
@@ -292,7 +292,7 @@ export function DexPoolsSection() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const chainId = useChainId();
-  const isOnArbitrum = chainId === arbitrumSepolia.id;
+  const isOnTargetChain = chainId === targetChain.id;
   const { switchChainAsync, isPending: isSwitchPending } = useSwitchChain();
   const { writeContractAsync, data: swapTxHash, isPending: isWritePending } = useWriteContract();
   const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash: swapTxHash });
@@ -450,23 +450,23 @@ export function DexPoolsSection() {
   const buyIcon = isTokenReversed ? activePool.icon0 : activePool.icon1;
 
   const selectedPoolMeta = poolMeta[activePool.id] ?? poolMeta["weth-usdc"];
-  const selectedPoolKey = toPoolKey(selectedPoolMeta.tokenAddress, apollosAddresses.usdc);
+  const selectedPoolKey = toPoolKey(selectedPoolMeta.tokenAddress, olympusAddresses.usdc);
 
   const { data: selectedPoolReads, isLoading: isSelectedPoolLoading } = useReadContracts({
     contracts: [
       {
-        address: apollosAddresses.uniswapPool,
+        address: olympusAddresses.uniswapPool,
         abi: uniswapAbi,
         functionName: "getPoolStateByKey",
         args: [selectedPoolKey],
-        chainId: arbitrumSepolia.id,
+        chainId: targetChain.id,
       },
       {
-        address: apollosAddresses.aavePool,
+        address: olympusAddresses.aavePool,
         abi: aaveAbi,
         functionName: "assetPrices",
         args: [selectedPoolMeta.tokenAddress],
-        chainId: arbitrumSepolia.id,
+        chainId: targetChain.id,
       },
     ],
     allowFailure: true,
@@ -482,7 +482,7 @@ export function DexPoolsSection() {
   const oraclePriceRaw = (selectedPoolReads?.[1]?.result as bigint | undefined) ?? BigInt(0);
 
   const isBaseCurrency0 =
-    selectedPoolMeta.tokenAddress.toLowerCase() < apollosAddresses.usdc.toLowerCase();
+    selectedPoolMeta.tokenAddress.toLowerCase() < olympusAddresses.usdc.toLowerCase();
   const reserveBaseRaw = isBaseCurrency0
     ? (poolState?.reserve0 ?? BigInt(0))
     : (poolState?.reserve1 ?? BigInt(0));
@@ -510,8 +510,8 @@ export function DexPoolsSection() {
 
   const sellDecimals = isTokenReversed ? 6 : selectedPoolMeta.baseDecimals;
   const buyDecimals = isTokenReversed ? selectedPoolMeta.baseDecimals : 6;
-  const sellTokenAddress = isTokenReversed ? apollosAddresses.usdc : selectedPoolMeta.tokenAddress;
-  const buyTokenAddress = isTokenReversed ? selectedPoolMeta.tokenAddress : apollosAddresses.usdc;
+  const sellTokenAddress = isTokenReversed ? olympusAddresses.usdc : selectedPoolMeta.tokenAddress;
+  const buyTokenAddress = isTokenReversed ? selectedPoolMeta.tokenAddress : olympusAddresses.usdc;
 
   const sellAmountRaw = useMemo(() => {
     if (!sellAmountInput.trim()) {
@@ -534,14 +534,14 @@ export function DexPoolsSection() {
         abi: erc20Abi,
         functionName: "balanceOf",
         args: [address ?? "0x0000000000000000000000000000000000000000"],
-        chainId: arbitrumSepolia.id,
+        chainId: targetChain.id,
       },
       {
         address: buyTokenAddress,
         abi: erc20Abi,
         functionName: "balanceOf",
         args: [address ?? "0x0000000000000000000000000000000000000000"],
-        chainId: arbitrumSepolia.id,
+        chainId: targetChain.id,
       },
       {
         address: sellTokenAddress,
@@ -549,16 +549,16 @@ export function DexPoolsSection() {
         functionName: "allowance",
         args: [
           address ?? "0x0000000000000000000000000000000000000000",
-          apollosAddresses.uniswapPool,
+          olympusAddresses.uniswapPool,
         ],
-        chainId: arbitrumSepolia.id,
+        chainId: targetChain.id,
       },
       {
-        address: apollosAddresses.uniswapPool,
+        address: olympusAddresses.uniswapPool,
         abi: uniswapAbi,
         functionName: "getSwapQuote",
         args: [selectedPoolKey, zeroForOne, sellAmountRaw],
-        chainId: arbitrumSepolia.id,
+        chainId: targetChain.id,
       },
     ],
     allowFailure: true,
@@ -618,11 +618,11 @@ export function DexPoolsSection() {
   const isSwapDataLoading = isSwapReadsLoading && Boolean(selectedPool && address);
   const hasEnoughBalance = sellAmountRaw <= sellBalanceRaw;
   const canSwap = sellAmountRaw > BigInt(0) && hasEnoughBalance;
-  const actionEnabled = isConnected && !isBusy && (isOnArbitrum ? canSwap : sellAmountRaw > BigInt(0));
+  const actionEnabled = isConnected && !isBusy && (isOnTargetChain ? canSwap : sellAmountRaw > BigInt(0));
   const swapButtonLabel = !isConnected
     ? "Connect Wallet"
-    : !isOnArbitrum
-      ? "Switch to Arbitrum"
+    : !isOnTargetChain
+      ? "Switch to Polkadot Hub TestNet"
       : !hasEnoughBalance && sellAmountRaw > BigInt(0)
         ? "Insufficient balance"
         : needsApproval
@@ -639,8 +639,8 @@ export function DexPoolsSection() {
     }
 
     try {
-      if (!isOnArbitrum) {
-        await switchChainAsync({ chainId: arbitrumSepolia.id });
+      if (!isOnTargetChain) {
+        await switchChainAsync({ chainId: targetChain.id });
         return;
       }
 
@@ -649,18 +649,18 @@ export function DexPoolsSection() {
           address: sellTokenAddress,
           abi: erc20Abi,
           functionName: "approve",
-          args: [apollosAddresses.uniswapPool, sellAmountRaw],
-          chainId: arbitrumSepolia.id,
+          args: [olympusAddresses.uniswapPool, sellAmountRaw],
+          chainId: targetChain.id,
         });
         return;
       }
 
       await writeContractAsync({
-        address: apollosAddresses.uniswapPool,
+        address: olympusAddresses.uniswapPool,
         abi: uniswapAbi,
         functionName: "swap",
         args: [selectedPoolKey, zeroForOne, BigInt(0) - sellAmountRaw, BigInt(0)],
-        chainId: arbitrumSepolia.id,
+        chainId: targetChain.id,
       });
     } catch {
       // noop
@@ -1011,7 +1011,7 @@ export function DexPoolsSection() {
             href="/dashboard?tab=earn"
             className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-fuchsia-600 to-pink-500 px-4 py-3 font-syne text-base font-bold text-white transition-opacity hover:opacity-90"
           >
-            Deposit on Apollos
+            Deposit on Olympus
             <ArrowUpRight className="h-4 w-4" />
           </Link>
 

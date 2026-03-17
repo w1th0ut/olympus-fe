@@ -1,21 +1,21 @@
-﻿---
-title: How Apollos Works
-description: Understand how Apollos builds linearized yield with a 2x delta-neutral vault model.
+---
+title: How Olympus Works
+description: Understand how Olympus builds linearized yield with a 2x delta-neutral vault model.
 ---
 
-# How Apollos Works
+# How Olympus Works
 
-Apollos lets users allocate to vaults that target linearized yield by combining base-asset exposure with delegated USDC credit.
+Olympus lets users allocate to vaults that target linearized yield by combining base-asset exposure with delegated USDC credit.
 
 > At a glance
 >
 > - Deposit a supported asset (`WETH`, `WBTC`, or `LINK`) and receive `afToken` shares.
-> - Apollos Vault borrows delegated `USDC` from **Aave** using **credit delegation**.
+> - Olympus Vault borrows delegated `USDC` from **Aave** using **credit delegation**.
 > - User asset + borrowed USDC are deployed into **Uniswap v4** market pools.
 > - Rebalancing logic keeps the position close to its target risk profile as price moves.
 > - A protection layer (LVR hook + workflow controls) is used to reduce toxic flow.
 
-In simple terms: your deposit goes into Apollos Vault, the vault borrows extra USDC from Aave (through delegated credit), then both are used in Uniswap v4 to run the strategy.
+In simple terms: your deposit goes into Olympus Vault, the vault borrows extra USDC from Aave (through delegated credit), then both are used in Uniswap v4 to run the strategy.
 
 ---
 
@@ -37,15 +37,15 @@ Some protocols try to offset this with token emissions. That can help short term
 
 ---
 
-## 💡The Solution: Apollos 2x Delta-Neutral Vault
+## 💡The Solution: Olympus 2x Delta-Neutral Vault
 
-Apollos targets a linearized profile by pairing user collateral with borrowed USDC and managing leverage at vault level.
+Olympus targets a linearized profile by pairing user collateral with borrowed USDC and managing leverage at vault level.
 
 1. **Deposit base asset**
-User deposits into an Apollos vault and receives `afToken` shares.
+User deposits into an Olympus vault and receives `afToken` shares.
 
 2. **Borrow delegated USDC**
-Apollos Vault draws USDC from **Aave** through a **credit delegation** line assigned to the vault.
+Olympus Vault draws USDC from **Aave** through a **credit delegation** line assigned to the vault.
 
 3. **Deploy dual-leg liquidity**
 Collateral leg + borrowed USDC leg are deployed into **Uniswap v4** pools via the vault strategy path.
@@ -58,9 +58,9 @@ The goal is to reduce IL drag and keep a more stable risk-adjusted growth curve 
 ### Why this is designed to kill IL drag
 
 In a normal AMM, LP value tends to scale with `sqrt(p)` as price moves (`p = price ratio`).  
-With Apollos' 2x vault structure (collateral leg + delegated USDC debt leg), the net position is engineered to scale closer to `p` around its target regime, not pure `sqrt(p)`.
+With Olympus' 2x vault structure (collateral leg + delegated USDC debt leg), the net position is engineered to scale closer to `p` around its target regime, not pure `sqrt(p)`.
 
-That is the key intuition: reducing `sqrt(p)` drag is how Apollos targets IL at the root strategy level, instead of relying only on token incentives.
+That is the key intuition: reducing `sqrt(p)` drag is how Olympus targets IL at the root strategy level, instead of relying only on token incentives.
 
 ---
 
@@ -68,7 +68,7 @@ That is the key intuition: reducing `sqrt(p)` drag is how Apollos targets IL at 
 
 The table below is a simplified illustration (ignores trading fees, borrow cost, and execution friction) to isolate IL behavior:
 
-| Asset move | Just hold (1 ETH + $2,000 USDC) | Classic `x*y=k` LP | Apollos (2x leverage) |
+| Asset move | Just hold (1 ETH + $2,000 USDC) | Classic `x*y=k` LP | Olympus (2x leverage) |
 | --- | --- | --- | --- |
 | -50% | $3,000 | ~$2,828 (about -5.7% vs hold) | $3,000 (+ fees) |
 | 0% | $4,000 | $4,000 | $4,000 (+ fees) |
@@ -81,7 +81,7 @@ Practical outcome: users keep fee exposure while reducing directional IL drag ve
 
 ## 📊What Happens When Price Changes?
 
-Apollos continuously tracks leverage, debt ratio, and health factor (`HF = collateral value / debt value` in simplified terms).  
+Olympus continuously tracks leverage, debt ratio, and health factor (`HF = collateral value / debt value` in simplified terms).  
 When deviation grows, the vault can rebalance toward its target profile.
 
 ### 📈Asset price goes up (debt too low)
@@ -114,17 +114,17 @@ When deviation grows, the vault can rebalance toward its target profile.
 
 ---
 
-## 🛡️Protection Layer: Why Apollos Is Different
+## 🛡️Protection Layer: Why Olympus Is Different
 
-- **Restricted direct pool access:** intended flow is through Apollos vaults, not unrestricted direct LP routing.
+- **Restricted direct pool access:** intended flow is through Olympus vaults, not unrestricted direct LP routing.
 - **LVR-aware hook controls:** dynamic fee logic helps defend against toxic/JIT flow.
 - **Workflow-driven operations:** off-chain signals can trigger risk responses for on-chain execution parameters.
 
 ---
 
-## ⬜Using Apollos: User Flow
+## ⬜Using Olympus: User Flow
 
-![Apollos User Flow Diagram](/images/Apollos%20User%20Diagram.png)
+![Olympus User Flow Diagram](/images/User%20Diagram.png)
 
 1. Select an Earn vault (`afWETH`, `afWBTC`, or `afLINK`).
 2. Deposit asset from wallet (or bridge from supported source flow).

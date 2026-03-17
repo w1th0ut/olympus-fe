@@ -40,7 +40,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
 
   return {
-    title: `${page.data.title} | Apollos Docs`,
+    title: `${page.data.title} | Olympus Docs`,
     description: page.data.description,
   };
 }

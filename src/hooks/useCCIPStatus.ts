@@ -1,20 +1,20 @@
 import { useReadContract } from "wagmi";
-import { arbitrumSepolia } from "wagmi/chains";
 import { type Hex } from "viem";
-import { ccipReceiverAbi } from "@/lib/apollos-abi";
-import { apollosAddresses } from "@/lib/apollos";
+import { olympusAddresses } from "@/lib/olympus";
 import { useMemo } from "react";
+import { ccipReceiverAbi } from "@/lib/olympus-abi";
+import { targetChain } from "@/lib/chains";
 
 export type CCIPStatus = "idle" | "pending" | "stored" | "success" | "failed";
 
 export function useCCIPStatus(messageId: Hex | undefined) {
   // Wagmi & TanStack Query otomatis menghandle polling & window focus!
   const { data: rawData, isLoading } = useReadContract({
-    address: apollosAddresses.ccipReceiver,
+    address: olympusAddresses.ccipReceiver,
     abi: ccipReceiverAbi,
     functionName: "pendingDeposits",
     args: messageId ? [messageId] : undefined,
-    chainId: arbitrumSepolia.id,
+    chainId: targetChain.id,
     query: {
       enabled: Boolean(messageId),
       refetchInterval: 5000, // Otomatis fetch tiap 5 detik

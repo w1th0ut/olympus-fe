@@ -23,7 +23,7 @@ const features = [
   },
   {
     title: "Anti-MEV Bot",
-    desc: "Restricted deposit so only ApollosVault can add liquidity.",
+    desc: "Restricted deposit so only OlympusVault can add liquidity.",
     btnLabel: "See Pools",
     href: "/dashboard?tab=pools",
   },

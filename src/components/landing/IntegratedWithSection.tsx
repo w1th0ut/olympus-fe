@@ -5,7 +5,7 @@ import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/components/landing/animations";
 
 const partners = [
-  { name: "Arbitrum", logo: "/icons/Logo-Arbitrum.png" },
+  { name: "Polkadot Hub TestNet", logo: "/icons/Logo-Polkadot Hub TestNet.png" },
   { name: "Chainlink", logo: "/icons/Logo-Chainlink.png" },
   { name: "Base", logo: "/icons/Logo-Base.png" },
   { name: "Uniswap", logo: "/icons/Logo-Uniswap.png" },
