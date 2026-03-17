@@ -6,10 +6,10 @@ import { staggerContainer, staggerItem } from "@/components/landing/animations";
 
 const partners = [
   { name: "Polkadot Hub TestNet", logo: "/icons/Logo-Polkadot Hub TestNet.png" },
-  { name: "Chainlink", logo: "/icons/Logo-Chainlink.png" },
-  { name: "Base", logo: "/icons/Logo-Base.png" },
-  { name: "Uniswap", logo: "/icons/Logo-Uniswap.png" },
-  { name: "Aave", logo: "/icons/Logo-Aave.png" },
+  { name: "Pyth Network", logo: "/icons/Logo-Pyth.png" },
+  { name: "Polkadot XCM", logo: "/icons/Logo-Polkadot Big.png" },
+  { name: "Hydration (DEX)", logo: "/icons/Logo-Hydration.png" },
+  { name: "Hydration (Lend)", logo: "/icons/Logo-Hydration.png" },
   { name: "Gemini API", logo: "/icons/Logo-Gemini.png" },
 ];
 
