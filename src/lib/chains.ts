@@ -1,7 +1,5 @@
 import { defineChain } from "viem";
-import { arbitrum, baseSepolia } from "wagmi/chains";
-
-export { arbitrum, baseSepolia };
+import { arbitrum } from "wagmi/chains";
 
 export const polkadotHubTestnet = defineChain({
   id: 420420417,
@@ -23,7 +21,7 @@ export const polkadotHubTestnet = defineChain({
   blockExplorers: {
     default: {
       name: "Polkadot Hub Explorer",
-      url: "https://blockscout-testnet.polkadot-hub.parity.io",
+      url: "https://blockscout-testnet.polkadot.io",
     },
   },
   testnet: true,
@@ -31,4 +29,4 @@ export const polkadotHubTestnet = defineChain({
 
 export const targetChain = polkadotHubTestnet;
 export const targetExplorerAddressBase = `${targetChain.blockExplorers.default.url}/address`;
-export const targetExplorerTxBase = `${targetChain.blockExplorers.default.url}/tx`;
+export { arbitrum };

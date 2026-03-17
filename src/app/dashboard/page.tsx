@@ -26,15 +26,15 @@ const sectionMeta = {
   },
   pools: {
     title: "DEX Pools",
-    description: "Explore Uniswap liquidity pools",
+    description: "Hydration-aligned liquidity venue overview",
   },
   "credit-line": {
     title: "Credit Line",
-    description: "Aave Credit Delegation Overview",
+    description: "Hydration-aligned lending market overview",
   },
   bridge: {
     title: "Bridge",
-    description: "Bridge assets across networks via CCIP Chainlink",
+    description: "Route assets through the Polkadot XCM simulator",
   },
 } as const;
 

@@ -8,7 +8,6 @@ import {
   useDisconnect,
 } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
-import { baseSepolia } from "wagmi/chains";
 import { targetChain } from "@/lib/chains";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -35,11 +34,8 @@ export function DashboardHeader({ title, description, activeSection }: Dashboard
   const connections = useConnections();
   const { openConnectModal } = useConnectModal();
 
-  const balanceChain = activeSection === "bridge" ? baseSepolia : targetChain;
-  const balanceLabel =
-    activeSection === "bridge"
-      ? "ETH Balance (Base)"
-      : `ETH Balance (${targetChain.name})`;
+  const balanceChain = targetChain;
+  const balanceLabel = `Native Balance (${targetChain.name})`;
 
   const { data: nativeBalance, isLoading: isBalanceLoading } = useBalance({
     address,

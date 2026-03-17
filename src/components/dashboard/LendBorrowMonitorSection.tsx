@@ -3,9 +3,9 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowUpRight, CircleHelp } from "lucide-react";
-import { formatUnits, type Address } from "viem";
+import { formatUnits } from "viem";
 import { useReadContracts } from "wagmi";
-import { arbitrum, targetChain, targetExplorerAddressBase } from "@/lib/chains";
+import { targetChain, targetExplorerAddressBase } from "@/lib/chains";
 import { aaveAbi, erc20Abi, uniswapAbi, vaultAbi } from "@/lib/olympus-abi";
 import { olympusAddresses, toPoolKey, vaultMarkets } from "@/lib/olympus";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,23 +24,14 @@ const CHART_PADDING = 18;
 const CHART_MIN = 1.0;
 const CHART_MAX = 2.4;
 
-function optionalAddress(value: string | undefined): Address | undefined {
-  if (!value) return undefined;
-  if (!/^0x[a-fA-F0-9]{40}$/.test(value)) return undefined;
-  return value as Address;
-}
-
-const AAVE_USDC_A_TOKEN = optionalAddress(process.env.NEXT_PUBLIC_AAVE_USDC_A_TOKEN);
-const AAVE_USDC_VARIABLE_DEBT_TOKEN = optionalAddress(
-  process.env.NEXT_PUBLIC_AAVE_USDC_VARIABLE_DEBT_TOKEN,
-);
-const AAVE_RESERVE_OVERVIEW_URL = process.env.NEXT_PUBLIC_AAVE_RESERVE_OVERVIEW_URL;
+const AAVE_RESERVE_OVERVIEW_URL =
+  process.env.NEXT_PUBLIC_AAVE_RESERVE_OVERVIEW_URL ??
+  "https://app.hydration.net/borrow/markets/0x0000000000000000000000000000000100000016?marketName=hydration_v3";
 const CREDIT_LINE_ORACLE_URL =
   process.env.NEXT_PUBLIC_CREDIT_LINE_ORACLE_URL ??
-  `${targetExplorerAddressBase}/0x6200A5122Af8D5D9e69f4d526311Cd85241ACeC9`;
-const USDC_DECIMALS = 6;
-const SUPPLY_CAP_M = 512.3;
-const BORROW_CAP_M = 425.6;
+  "https://insights.pyth.network/price-feeds/Crypto.USDC%2FUSD";
+const SUPPLY_CAP_M = 12;
+const BORROW_CAP_M = 6;
 
 function formatMillion(value: number) {
   return `${(value / 1_000_000).toFixed(2)}M`;
@@ -115,9 +106,6 @@ function buildHealthSeries(baseHealth: number, range: HealthRange) {
 
 export function LendBorrowMonitorSection() {
   const [healthRange, setHealthRange] = useState<HealthRange>("7d");
-  const hasAaveReserveContracts = Boolean(
-    AAVE_USDC_A_TOKEN && AAVE_USDC_VARIABLE_DEBT_TOKEN,
-  );
 
   const contracts = [
     {
@@ -180,29 +168,6 @@ export function LendBorrowMonitorSection() {
     },
   });
 
-  const { data: reserveMainnetReads } = useReadContracts({
-    contracts: hasAaveReserveContracts
-      ? [
-          {
-            address: AAVE_USDC_A_TOKEN!,
-            abi: erc20Abi,
-            functionName: "totalSupply",
-            chainId: arbitrum.id,
-          },
-          {
-            address: AAVE_USDC_VARIABLE_DEBT_TOKEN!,
-            abi: erc20Abi,
-            functionName: "totalSupply",
-            chainId: arbitrum.id,
-          },
-        ]
-      : [],
-    allowFailure: true,
-    query: {
-      enabled: hasAaveReserveContracts,
-      refetchInterval: 30000,
-    },
-  });
   const isMonitorLoading = isLoading;
 
   const usdcPriceRaw = (data?.[0]?.result as bigint | undefined) ?? BigInt(100000000);
@@ -266,16 +231,11 @@ export function LendBorrowMonitorSection() {
   const totalLiquidityUsdc = availableLiquidityUsdc + aggregate.debtUsdc;
   const borrowCapUsdc = Math.max(aggregate.creditLimitUsdc, totalLiquidityUsdc);
 
-  const aaveSupplyRaw =
-    (reserveMainnetReads?.[0]?.result as bigint | undefined) ?? BigInt(0);
-  const aaveBorrowRaw =
-    (reserveMainnetReads?.[1]?.result as bigint | undefined) ?? BigInt(0);
-
-  const aaveSupplyUsdc = Number(formatUnits(aaveSupplyRaw, USDC_DECIMALS));
-  const aaveBorrowUsdc = Number(formatUnits(aaveBorrowRaw, USDC_DECIMALS));
-  const aaveAvailableLiquidityUsdc = Math.max(0, aaveSupplyUsdc - aaveBorrowUsdc);
-  const aaveUtilizationRate =
-    aaveSupplyUsdc > 0 ? (aaveBorrowUsdc / aaveSupplyUsdc) * 100 : 0;
+  const lendingMarketSupplyUsdc = 5.847 * 1_000_000;
+  const lendingMarketBorrowUsdc = 2.924 * 1_000_000;
+  const lendingMarketAvailableLiquidityUsdc = Math.max(0, lendingMarketSupplyUsdc - lendingMarketBorrowUsdc);
+  const lendingMarketUtilizationRate =
+    lendingMarketSupplyUsdc > 0 ? (lendingMarketBorrowUsdc / lendingMarketSupplyUsdc) * 100 : 0;
 
   const supplyCapUsdc = SUPPLY_CAP_M * 1_000_000;
   const borrowCapUsdcForStats = BORROW_CAP_M * 1_000_000;
@@ -310,29 +270,29 @@ export function LendBorrowMonitorSection() {
   };
 
   const reserveMetrics: Array<{ label: string; value: string; href?: string }> = [
-    { label: "Reserve Size", value: formatMillionUsd(aaveSupplyUsdc) },
-    { label: "Available liquidity", value: formatMillionUsd(aaveAvailableLiquidityUsdc) },
-    { label: "Utilization Rate", value: `${aaveUtilizationRate.toFixed(2)}%` },
+    { label: "Reserve Size", value: formatMillionUsd(lendingMarketSupplyUsdc) },
+    { label: "Available liquidity", value: formatMillionUsd(lendingMarketAvailableLiquidityUsdc) },
+    { label: "Utilization Rate", value: `${lendingMarketUtilizationRate.toFixed(2)}%` },
     { label: "Oracle price", value: "$ 1.00", href: CREDIT_LINE_ORACLE_URL },
   ];
 
   const supplyInfo = {
-    utilization: supplyCapUsdc > 0 ? Math.min(100, (aaveSupplyUsdc / supplyCapUsdc) * 100) : 0,
-    totalLabel: `${formatMillion(aaveSupplyUsdc)} of ${SUPPLY_CAP_M.toFixed(2)}M`,
-    totalSubLabel: `${formatMillionUsd(aaveSupplyUsdc)} of $ ${SUPPLY_CAP_M.toFixed(2)}M`,
-    apy: "1.82 %",
+    utilization: supplyCapUsdc > 0 ? Math.min(100, (5.85 * 1_000_000 / supplyCapUsdc) * 100) : 0,
+    totalLabel: "5.85M of 12M",
+    totalSubLabel: "$5.847M of $11.99M",
+    apy: "2.05%",
   };
 
   const borrowInfo = {
     utilization:
       borrowCapUsdcForStats > 0
-        ? Math.min(100, (aaveBorrowUsdc / borrowCapUsdcForStats) * 100)
+        ? Math.min(100, (2.925 * 1_000_000 / borrowCapUsdcForStats) * 100)
         : 0,
-    totalLabel: `${formatMillion(aaveBorrowUsdc)} of ${BORROW_CAP_M.toFixed(2)}M`,
-    totalSubLabel: `${formatMillionUsd(aaveBorrowUsdc)} of $ ${BORROW_CAP_M.toFixed(2)}M`,
-    variableApy: "3.39 %",
-    borrowCap: `${BORROW_CAP_M.toFixed(2)}M`,
-    borrowCapSubLabel: `$ ${BORROW_CAP_M.toFixed(2)}M`,
+    totalLabel: "2.925M of 6M",
+    totalSubLabel: "$2.924M of $5.997M",
+    variableApy: "4.60%",
+    borrowCap: "6M",
+    borrowCapSubLabel: "$5.997M",
   };
 
   const utilizationPercent =
@@ -381,7 +341,7 @@ export function LendBorrowMonitorSection() {
     return (
       <div className="mt-8 space-y-7">
         <section className="space-y-4">
-          <h2 className="font-syne text-xl font-bold text-neutral-950 sm:text-2xl">Aave Protocol Stats</h2>
+          <h2 className="font-syne text-xl font-bold text-neutral-950 sm:text-2xl">Hydration Protocol Stats</h2>
           <div className="grid grid-cols-1 gap-4 2xl:grid-cols-3">
             {Array.from({ length: 3 }).map((_, index) => (
               <article
@@ -430,7 +390,7 @@ export function LendBorrowMonitorSection() {
   return (
     <div className="mt-8 space-y-7">
       <section className="space-y-4">
-        <h2 className="font-syne text-xl font-bold text-neutral-950 sm:text-2xl">Aave Protocol Stats</h2>
+        <h2 className="font-syne text-xl font-bold text-neutral-950 sm:text-2xl">Hydration Protocol Stats</h2>
 
         <div className="grid grid-cols-1 gap-4 2xl:grid-cols-3">
           <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
@@ -440,8 +400,8 @@ export function LendBorrowMonitorSection() {
               </h3>
               <div className="flex shrink-0 items-center gap-2">
                 <img
-                  src="/icons/Logo-Aave.png"
-                  alt="Aave"
+                  src="/icons/Logo-Hydration.png"
+                  alt="OlympusLend"
                   className="h-8 w-8 shrink-0 rounded-full border border-black/10 bg-white object-contain"
                 />
                 {AAVE_RESERVE_OVERVIEW_URL ? (
@@ -449,7 +409,7 @@ export function LendBorrowMonitorSection() {
                     href={AAVE_RESERVE_OVERVIEW_URL}
                     target="_blank"
                     rel="noopener noreferrer"
-                    aria-label="Open Aave USDC reserve overview"
+                    aria-label="Open OlympusLend USDC reserve overview"
                     className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-black/15 bg-white text-neutral-800 transition-colors hover:bg-neutral-100"
                   >
                     <ArrowUpRight className="h-4 w-4" />

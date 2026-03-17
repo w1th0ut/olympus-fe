@@ -1,80 +1,78 @@
-# Olympus Finance Frontend 🏛️
-### The Command Center for Cross-Chain Leveraged Yield
+# Olympus Finance Frontend
 
-The Olympus Finance frontend is a high-performance web application built with **Next.js 15**, **Wagmi**, and **Framer Motion**. It provides a sophisticated, real-time interface for users to manage leveraged yield positions, monitor protocol health, and bridge assets across chains with institutional-grade transparency.
+The Olympus Finance frontend is a Next.js application for the Polkadot Hub TestNet deployment of Olympus. It focuses on three core assets, WETH, WBTC, and DOT, and presents the protocol through an Olympus-native dashboard backed by the Express worker.
 
-## 🌟 Key Features (The Olympus Edge)
+## Architecture
 
-### 1. Unified Cross-Chain Strategy Dashboard ⚙️
-Manage complex leveraged operations from a single "Command Center." Users can deposit and monitor **afTOKEN** positions (WETH, WBTC, LINK) with real-time yield tracking. The dashboard abstracts the complexity of Aave V3 credit delegation and Uniswap V4 liquidity provision into a seamless user experience.
+- Network: Polkadot Hub TestNet
+- Vault assets: WETH, WBTC, DOT
+- Backend data source: Pyth Hermes, synchronized by `olympus-be`
+- Lending execution layer: OlympusLend
+- Swap execution layer: OlympusSwap
+- Bridge UX: simulated Polkadot XCM flow through backend APIs
 
-### 2. Predictive Risk Analytics (VaR) 📊
-Unlike standard dashboards that only show past performance, Olympus provides **Forward-Looking Risk Assessment**. Powered by Chainlink CRE, the frontend displays a real-time **Value at Risk (VaR)** score. This gives users an institutional-grade percentage estimate of potential hourly losses, calculated using historical simulation and current leverage factors.
+The current frontend intentionally reads market prices and workflow activity from the backend because the on-chain oracle and cache contracts are not active on the latest Polkadot Hub deployment yet.
 
-### 3. AI-Powered "Guardian Logs" 🧠
-Olympus demystifies DeFi automation. Every strategic move—whether it's a rebalance, a fee adjustment, or an emergency pause—is recorded in the **Guardian Logs**. Using **Gemini AI**, technical blockchain events are translated into natural language narratives, ensuring users always know the "Why" behind protocol decisions.
+## Dashboard sections
 
-### 4. Active LVR Protection (Uniswap V4 Hooks) ⚔️
-Olympus is at the forefront of AMM evolution. The protocol implements custom **Uniswap V4 Hooks** to protect Liquidity Providers from **Loss-Versus-Rebalancing (LVR)**. The frontend visualizes when the "Reactive Defender" workflow triggers dynamic fee increases to discourage toxic arbitrage during high market volatility.
+- `My Balances`: wallet balances, faucet access, vault positions, and backend activity
+- `Earn`: vault metrics, deposit and withdraw flows, backend market prices, and guardian events
+- `DEX Pools`: OlympusSwap pool reserves, pricing, and quote diagnostics
+- `Credit Line`: OlympusLend liquidity, debt, utilization, and vault health
+- `Bridge`: simulated XCM lifecycle for the Olympus MVP narrative
 
-### 5. Decentralized Intelligence Hub (Chainlink CRE) 🛰️
-The protocol is powered by a decentralized "Off-Chain Brain" using **Chainlink Runtime Environment (CRE)**. This architecture ensures that critical logic—such as the **Autonomous Auditor**, **Accountant**, and **Strategist**—runs with node-level reliability and consensus, moving beyond centralized bots used by traditional protocols.
+Hydration may appear in descriptive roadmap copy, but the live EVM execution path remains inside Olympus-controlled mock contracts so the demo stays deterministic.
 
-### 6. Persistent "Store-and-Execute" Bridge Flow 📡
-Powered by **Chainlink CCIP**, Olympus handles cross-chain state with a persistent interface. The "Auto-Zap" feature allows users to bridge USDC and instantly deposit into leveraged vaults. The UI tracks and persists the bridge status in `localStorage`, guiding users through the multi-step process even across browser sessions.
+## Environment variables
 
----
+Use `.env.example` as the source of truth.
 
-## 🏗️ Technical Architecture
+Required runtime values:
 
-- **Framework**: Next.js 15 (App Router) with React 19.
-- **Web3 Stack**: Wagmi v2, Viem, and RainbowKit.
-- **State Management**: TanStack Query for efficient blockchain polling.
-- **Styling**: Tailwind CSS v4 with a custom Brutalist design system.
-- **Animations**: Framer Motion for high-fidelity interactive elements (including 3D Tilt and Digital RGB Glitch effects).
-- **Visualization**: Recharts for historical TVL, APY, and Risk trend analysis.
+```env
+NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=...
+NEXT_PUBLIC_POLKADOT_HUB_RPC_URL=https://services.polkadothub-rpc.com/testnet
+NEXT_PUBLIC_OLYMPUS_BE_URL=http://localhost:3001
+```
 
----
+The contract addresses in `.env.example` already match the latest deployed Olympus core contracts on Polkadot Hub TestNet.
 
-## 🛠 Technology Stack
+Optional values:
 
-- **Framework**: Next.js 15
-- **Language**: TypeScript 5
-- **Blockchain**: Wagmi & Viem
-- **Icons**: Lucide React
-- **UI Components**: Radix UI & Shadcn
-- **Visuals**: Framer Motion
+- `NEXT_PUBLIC_DATA_FEEDS_CACHE_ADDRESS`
+- `NEXT_PUBLIC_WETH_ORACLE_ADDRESS`
+- `NEXT_PUBLIC_WBTC_ORACLE_ADDRESS`
+- `NEXT_PUBLIC_DOT_ORACLE_ADDRESS`
 
----
+These are set to the zero address for now because the on-chain oracle and cache layer is not live yet.
 
-## 🚀 Getting Started
+## Development
 
-### Prerequisites
-- Node.js (v20+)
-- [pnpm](https://pnpm.io/) installed.
+Install dependencies:
 
-### Installation
 ```bash
 cd olympus-fe
 pnpm install
 ```
 
-### Configuration
-Update the `.env` file with your specific contract addresses and IDs:
-```env
-NEXT_PUBLIC_ARB_RPC_URL=...
-NEXT_PUBLIC_DATA_FEEDS_CACHE_ADDRESS=0x4D370021f2b5253f8085B64a6B882265B68A024e
-# DataFeed IDs (Decimal)
-NEXT_PUBLIC_WETH_VAR_ID=107253457905186060015569424072619445204683515814529241517409241510340786950426
-```
+Run the frontend:
 
-### Execution
 ```bash
 pnpm dev
 ```
 
-## 📄 License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Run the type check:
 
----
-*Built with 🔥 by Olympus Finance Team to make DeFi smarter, safer, and human-readable.*
+```bash
+pnpm check
+```
+
+## Backend dependency
+
+For the full dashboard experience, run the backend in parallel:
+
+```bash
+cd ../olympus-be
+npm run dev:api
+npm run dev:polkadot-hub
+```

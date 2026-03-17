@@ -11,13 +11,13 @@ interface FeaturesSectionProps {
 const features = [
   {
     title: "Linear Yield",
-    desc: "Using a 2x Leverage Strategy from Hydration (Lend) to neutralize volatile asset price exposure.",
+    desc: "Using a 2x leverage strategy designed for future Hydration (Lend) integration to neutralize volatile asset price exposure.",
     btnLabel: "Start Earning",
     href: "/dashboard?tab=earn",
   },
   {
     title: "Prevent LVR",
-    desc: "Backend AI Guardian to detect market volatility.",
+    desc: "Backend AI Guardian continuously monitors volatility spikes, price dislocations, and liquidity stress before coordinating defensive protocol actions.",
     btnLabel: "See in Action",
     href: null,
   },

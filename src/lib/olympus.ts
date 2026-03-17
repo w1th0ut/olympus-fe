@@ -10,6 +10,12 @@ function requiredAddr(envName: string, value: string | undefined): Address {
   return value as Address;
 }
 
+function optionalAddr(value: string | undefined): Address | undefined {
+  if (!value || /^0x0{40}$/i.test(value)) return undefined;
+  if (!/^0x[a-fA-F0-9]{40}$/.test(value)) return undefined;
+  return value as Address;
+}
+
 function requiredBigInt(envName: string, value: string | undefined): bigint {
   if (!value) {
     throw new Error(`Missing required env: ${envName}`);
@@ -22,20 +28,11 @@ function requiredBigInt(envName: string, value: string | undefined): bigint {
   }
 }
 
-function optionalBigInt(value: string | undefined): bigint {
-  if (!value) return BigInt(0);
-
-  try {
-    return BigInt(value);
-  } catch {
-    return BigInt(0);
-  }
-}
-
 export const olympusAddresses = {
   weth: requiredAddr("NEXT_PUBLIC_WETH_ADDRESS", process.env.NEXT_PUBLIC_WETH_ADDRESS),
   wbtc: requiredAddr("NEXT_PUBLIC_WBTC_ADDRESS", process.env.NEXT_PUBLIC_WBTC_ADDRESS),
-  link: requiredAddr("NEXT_PUBLIC_LINK_ADDRESS", process.env.NEXT_PUBLIC_LINK_ADDRESS),
+  dot: requiredAddr("NEXT_PUBLIC_DOT_ADDRESS", process.env.NEXT_PUBLIC_DOT_ADDRESS),
+  link: requiredAddr("NEXT_PUBLIC_DOT_ADDRESS", process.env.NEXT_PUBLIC_DOT_ADDRESS),
   usdc: requiredAddr("NEXT_PUBLIC_USDC_ADDRESS", process.env.NEXT_PUBLIC_USDC_ADDRESS),
   factory: requiredAddr("NEXT_PUBLIC_FACTORY_ADDRESS", process.env.NEXT_PUBLIC_FACTORY_ADDRESS),
   vaultWeth: requiredAddr(
@@ -46,63 +43,52 @@ export const olympusAddresses = {
     "NEXT_PUBLIC_WBTC_VAULT_ADDRESS",
     process.env.NEXT_PUBLIC_WBTC_VAULT_ADDRESS,
   ),
-  vaultLink: requiredAddr(
-    "NEXT_PUBLIC_LINK_VAULT_ADDRESS",
-    process.env.NEXT_PUBLIC_LINK_VAULT_ADDRESS,
+  vaultDot: requiredAddr(
+    "NEXT_PUBLIC_DOT_VAULT_ADDRESS",
+    process.env.NEXT_PUBLIC_DOT_VAULT_ADDRESS,
   ),
   router: requiredAddr("NEXT_PUBLIC_ROUTER_ADDRESS", process.env.NEXT_PUBLIC_ROUTER_ADDRESS),
-  ccipReceiver: requiredAddr(
-    "NEXT_PUBLIC_CCIP_RECEIVER_ADDRESS",
-    process.env.NEXT_PUBLIC_CCIP_RECEIVER_ADDRESS,
+  olympusSwap: requiredAddr(
+    "NEXT_PUBLIC_OLYMPUS_SWAP_ADDRESS",
+    process.env.NEXT_PUBLIC_OLYMPUS_SWAP_ADDRESS,
   ),
   uniswapPool: requiredAddr(
-    "NEXT_PUBLIC_UNISWAP_POOL_ADDRESS",
-    process.env.NEXT_PUBLIC_UNISWAP_POOL_ADDRESS,
+    "NEXT_PUBLIC_OLYMPUS_SWAP_ADDRESS",
+    process.env.NEXT_PUBLIC_OLYMPUS_SWAP_ADDRESS,
   ),
-  aavePool: requiredAddr("NEXT_PUBLIC_AAVE_POOL_ADDRESS", process.env.NEXT_PUBLIC_AAVE_POOL_ADDRESS),
+  olympusLend: requiredAddr(
+    "NEXT_PUBLIC_OLYMPUS_LEND_ADDRESS",
+    process.env.NEXT_PUBLIC_OLYMPUS_LEND_ADDRESS,
+  ),
+  aavePool: requiredAddr(
+    "NEXT_PUBLIC_OLYMPUS_LEND_ADDRESS",
+    process.env.NEXT_PUBLIC_OLYMPUS_LEND_ADDRESS,
+  ),
   lvrHook: requiredAddr("NEXT_PUBLIC_LVR_HOOK_ADDRESS", process.env.NEXT_PUBLIC_LVR_HOOK_ADDRESS),
-  dataFeedsCache: requiredAddr(
-    "NEXT_PUBLIC_DATA_FEEDS_CACHE_ADDRESS",
-    process.env.NEXT_PUBLIC_DATA_FEEDS_CACHE_ADDRESS,
-  ),
-  workflowReceiver: requiredAddr(
-    "NEXT_PUBLIC_GENERIC_WORKFLOW_RECEIVER_ADDRESS",
-    process.env.NEXT_PUBLIC_GENERIC_WORKFLOW_RECEIVER_ADDRESS,
-  ),
-  baseCcipBnm: requiredAddr(
-    "NEXT_PUBLIC_BASE_CCIP_BNM_ADDRESS",
-    process.env.NEXT_PUBLIC_BASE_CCIP_BNM_ADDRESS,
-  ),
-  sourceRouter: requiredAddr(
-    "NEXT_PUBLIC_SOURCE_ROUTER_ADDRESS",
-    process.env.NEXT_PUBLIC_SOURCE_ROUTER_ADDRESS,
-  ),
+  dataFeedsCache: optionalAddr(process.env.NEXT_PUBLIC_DATA_FEEDS_CACHE_ADDRESS),
+  wethOracle: optionalAddr(process.env.NEXT_PUBLIC_WETH_ORACLE_ADDRESS),
+  wbtcOracle: optionalAddr(process.env.NEXT_PUBLIC_WBTC_ORACLE_ADDRESS),
+  dotOracle: optionalAddr(process.env.NEXT_PUBLIC_DOT_ORACLE_ADDRESS),
 } as const;
 
 export const olympusNavIds = {
   weth: requiredBigInt("NEXT_PUBLIC_WETH_NAV_ID", process.env.NEXT_PUBLIC_WETH_NAV_ID),
   wbtc: requiredBigInt("NEXT_PUBLIC_WBTC_NAV_ID", process.env.NEXT_PUBLIC_WBTC_NAV_ID),
-  link: requiredBigInt("NEXT_PUBLIC_LINK_NAV_ID", process.env.NEXT_PUBLIC_LINK_NAV_ID),
+  dot: requiredBigInt("NEXT_PUBLIC_DOT_NAV_ID", process.env.NEXT_PUBLIC_DOT_NAV_ID),
 } as const;
 
 export const olympusVarIds = {
   weth: requiredBigInt("NEXT_PUBLIC_WETH_VAR_ID", process.env.NEXT_PUBLIC_WETH_VAR_ID),
   wbtc: requiredBigInt("NEXT_PUBLIC_WBTC_VAR_ID", process.env.NEXT_PUBLIC_WBTC_VAR_ID),
-  link: requiredBigInt("NEXT_PUBLIC_LINK_VAR_ID", process.env.NEXT_PUBLIC_LINK_VAR_ID),
+  dot: requiredBigInt("NEXT_PUBLIC_DOT_VAR_ID", process.env.NEXT_PUBLIC_DOT_VAR_ID),
+  link: requiredBigInt("NEXT_PUBLIC_DOT_VAR_ID", process.env.NEXT_PUBLIC_DOT_VAR_ID),
 } as const;
 
-export const ccipSelectors = {
-  polkadotHubTestnet: optionalBigInt(
-    process.env.NEXT_PUBLIC_POLKADOT_HUB_CHAIN_SELECTOR,
-  ),
-  baseSepolia: BigInt("10344971235874465080"),
-} as const;
-
-export type VaultKey = "afWETH" | "afWBTC" | "afLINK";
+export type VaultKey = "afWETH" | "afWBTC" | "afDOT" | "afLINK";
 
 export const vaultMarkets: Array<{
   key: VaultKey;
-  symbol: "WETH" | "WBTC" | "LINK";
+  symbol: "WETH" | "WBTC" | "DOT";
   icon: string;
   afIcon: string;
   vaultAddress: Address;
@@ -128,18 +114,19 @@ export const vaultMarkets: Array<{
     decimals: 8,
   },
   {
-    key: "afLINK",
-    symbol: "LINK",
-    icon: "/icons/Logo-LINK.png",
-    afIcon: "/icons/Logo-afLINK.png",
-    vaultAddress: olympusAddresses.vaultLink,
-    tokenAddress: olympusAddresses.link,
+    key: "afDOT",
+    symbol: "DOT",
+    icon: "/icons/Logo-Polkadot.png",
+    afIcon: "/icons/Logo-afDOT.png",
+    vaultAddress: olympusAddresses.vaultDot,
+    tokenAddress: olympusAddresses.dot,
     decimals: 18,
   },
 ];
 
 export function toPoolKey(tokenA: Address, tokenB: Address) {
-  const [currency0, currency1] = tokenA.toLowerCase() < tokenB.toLowerCase() ? [tokenA, tokenB] : [tokenB, tokenA];
+  const [currency0, currency1] =
+    tokenA.toLowerCase() < tokenB.toLowerCase() ? [tokenA, tokenB] : [tokenB, tokenA];
 
   return {
     currency0,

@@ -12,7 +12,7 @@ import {
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
-import { arbitrum, targetChain, targetExplorerAddressBase } from "@/lib/chains";
+import { targetChain, targetExplorerAddressBase } from "@/lib/chains";
 import {
   aaveAbi,
   chainlinkAggregatorAbi,
@@ -28,6 +28,10 @@ import {
   type VaultKey,
   vaultMarkets,
 } from "@/lib/olympus";
+import {
+  olympusSwapPoolIdBySymbol,
+  resolveOlympusSwapPoolMetrics,
+} from "@/lib/olympusSwapPricing";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const DEFAULT_POOL_BORROW_CAP_USDC = 1_000_000;
@@ -39,10 +43,10 @@ const CHAINLINK_PRICE_DECIMALS = 8;
 const MAX_GUARDIAN_LOGS = 5;
 const APY_ANNUALIZATION_WINDOW_DAYS = 30;
 
-const chainlinkReferenceFeeds: Record<"WETH" | "WBTC" | "LINK", `0x${string}`> = {
-  WETH: "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612",
-  WBTC: "0x6ce185860a4963106506C203335A2910413708e9",
-  LINK: "0x86E53CF1B870786351Da77A57575e79CB55812CB",
+const pythInsightsFeedUrls: Record<"WETH" | "WBTC" | "DOT", string> = {
+  WETH: "https://insights.pyth.network/price-feeds/Crypto.WETH%2FUSD",
+  WBTC: "https://insights.pyth.network/price-feeds/Crypto.WBTC%2FUSD",
+  DOT: "https://insights.pyth.network/price-feeds/Crypto.DOT%2FUSD",
 };
 
 function bigintToBytes32(value: bigint): `0x${string}` {
@@ -53,11 +57,17 @@ function bigintToBytes32(value: bigint): `0x${string}` {
   return `0x${normalized}`;
 }
 
-const varIdsBySymbol: Record<"WETH" | "WBTC" | "LINK", `0x${string}`> = {
+const varIdsBySymbol: Record<"WETH" | "WBTC" | "DOT", `0x${string}`> = {
   WETH: bigintToBytes32(olympusVarIds.weth),
   WBTC: bigintToBytes32(olympusVarIds.wbtc),
-  LINK: bigintToBytes32(olympusVarIds.link),
+  DOT: bigintToBytes32(olympusVarIds.dot),
 };
+
+const spotOracleAddressBySymbol = {
+  WETH: olympusAddresses.wethOracle,
+  WBTC: olympusAddresses.wbtcOracle,
+  DOT: olympusAddresses.dotOracle,
+} as const;
 
 type DetailTab = "auto" | "stake";
 type VaultActionTab = "deposit" | "withdraw" | "convert";
@@ -73,12 +83,13 @@ type GuardianLogItem = {
 const vaultPoolIdMap: Record<VaultKey, string> = {
   afWETH: "weth-usdc",
   afWBTC: "wbtc-usdc",
-  afLINK: "link-usdc",
+  afDOT: "dot-usdc",
+  afLINK: "dot-usdc",
 };
 
 type EarnMarketData = {
   key: VaultKey;
-  symbol: "WETH" | "WBTC" | "LINK";
+  symbol: "WETH" | "WBTC" | "DOT";
   icon: string;
   afIcon: string;
   vaultAddress: `0x${string}`;
@@ -99,7 +110,7 @@ type EarnMarketData = {
   walletBalance: number;
   tvlPrimary: string;
   tvlSecondary: string;
-  oracleFeedAddress: `0x${string}`;
+  pythFeedUrl: string;
   varDataId: `0x${string}`;
   varBps: number;
   varPercent: number;
@@ -177,18 +188,12 @@ export function EarnSection() {
     }
   }, [actionTab]);
 
-  const contracts = vaultMarkets.flatMap((market) => [
+  const marketOverviewContracts = vaultMarkets.flatMap((market) => [
     {
       address: market.vaultAddress,
       abi: vaultAbi,
       functionName: "totalAssets" as const,
       chainId: targetChain.id,
-    },
-    {
-      address: chainlinkReferenceFeeds[market.symbol],
-      abi: chainlinkAggregatorAbi,
-      functionName: "latestRoundData" as const,
-      chainId: arbitrum.id,
     },
     {
       address: olympusAddresses.aavePool,
@@ -212,53 +217,121 @@ export function EarnSection() {
       chainId: targetChain.id,
     },
     {
-      address: olympusAddresses.uniswapPool,
-      abi: uniswapAbi,
-      functionName: "getPoolStateByKey" as const,
-      args: [toPoolKey(market.tokenAddress, olympusAddresses.usdc)],
-      chainId: targetChain.id,
-    },
-    {
       address: market.vaultAddress,
       abi: vaultAbi,
       functionName: "getSharePrice" as const,
       chainId: targetChain.id,
     },
-    {
-      address: olympusAddresses.dataFeedsCache,
-      abi: dataFeedsCacheAbi,
-      functionName: "latestRoundData" as const,
-      args: [varIdsBySymbol[market.symbol]],
-      chainId: targetChain.id,
-    },
   ]);
 
-  const { data, isLoading, refetch: refetchMarkets } = useReadContracts({
-    contracts,
+  const marketReferencePriceContracts = vaultMarkets.map((market) => {
+    const oracleAddress = spotOracleAddressBySymbol[market.symbol];
+
+    return oracleAddress
+      ? {
+          address: oracleAddress,
+          abi: chainlinkAggregatorAbi,
+          functionName: "latestRoundData" as const,
+          chainId: targetChain.id,
+        }
+      : {
+          address: olympusAddresses.aavePool,
+          abi: aaveAbi,
+          functionName: "assetPrices" as const,
+          args: [market.tokenAddress],
+          chainId: targetChain.id,
+        };
+  });
+
+  const marketPoolContracts = vaultMarkets.map((market) => ({
+    address: olympusAddresses.uniswapPool,
+    abi: uniswapAbi,
+    functionName: "getPoolStateByKey" as const,
+    args: [toPoolKey(market.tokenAddress, olympusAddresses.usdc)],
+    chainId: targetChain.id,
+  }));
+
+  const marketVarContracts = olympusAddresses.dataFeedsCache
+    ? vaultMarkets.map((market) => ({
+        address: olympusAddresses.dataFeedsCache!,
+        abi: dataFeedsCacheAbi,
+        functionName: "latestRoundData" as const,
+        args: [varIdsBySymbol[market.symbol]],
+        chainId: targetChain.id,
+      }))
+    : [];
+
+  const {
+    data: marketOverviewData,
+    isLoading: isOverviewLoading,
+    refetch: refetchMarketOverview,
+  } = useReadContracts({
+    contracts: marketOverviewContracts,
     allowFailure: true,
     query: {
       refetchInterval: 15000,
     },
   });
 
+  const {
+    data: marketReferencePriceData,
+    isLoading: isReferencePriceLoading,
+    refetch: refetchReferencePrices,
+  } = useReadContracts({
+    contracts: marketReferencePriceContracts,
+    allowFailure: true,
+    query: {
+      refetchInterval: 15000,
+    },
+  });
+
+  const {
+    data: marketPoolData,
+    isLoading: isPoolStatesLoading,
+    refetch: refetchPoolStates,
+  } = useReadContracts({
+    contracts: marketPoolContracts,
+    allowFailure: true,
+    query: {
+      refetchInterval: 15000,
+    },
+  });
+
+  const {
+    data: marketVarData,
+    isLoading: isVarLoading,
+    refetch: refetchVarData,
+  } = useReadContracts({
+    contracts: marketVarContracts,
+    allowFailure: true,
+    query: {
+      enabled: marketVarContracts.length > 0,
+      refetchInterval: 15000,
+    },
+  });
+
   const earnMarkets = useMemo<EarnMarketData[]>(() => {
     return vaultMarkets.map((market, index) => {
-      const offset = index * 8;
-      const totalAssetsRaw = (data?.[offset]?.result as bigint | undefined) ?? BigInt(0);
-      const latestRoundData = (data?.[offset + 1]?.result as
-        | readonly [bigint, bigint, bigint, bigint, bigint]
-        | undefined);
-      const rawPrice = latestRoundData?.[1] && latestRoundData[1] > BigInt(0)
-        ? latestRoundData[1]
-        : BigInt(0);
-      const rawDebt = (data?.[offset + 2]?.result as bigint | undefined) ?? BigInt(0);
-      const rawCreditLimit = (data?.[offset + 3]?.result as bigint | undefined) ?? BigInt(0);
-      const walletBalanceRaw = (data?.[offset + 4]?.result as bigint | undefined) ?? BigInt(0);
-      const poolState = (data?.[offset + 5]?.result as
+      const overviewOffset = index * 5;
+      const totalAssetsRaw =
+        (marketOverviewData?.[overviewOffset]?.result as bigint | undefined) ?? BigInt(0);
+      const rawDebt =
+        (marketOverviewData?.[overviewOffset + 1]?.result as bigint | undefined) ?? BigInt(0);
+      const rawCreditLimit =
+        (marketOverviewData?.[overviewOffset + 2]?.result as bigint | undefined) ?? BigInt(0);
+      const walletBalanceRaw =
+        (marketOverviewData?.[overviewOffset + 3]?.result as bigint | undefined) ?? BigInt(0);
+      const sharePriceRaw =
+        (marketOverviewData?.[overviewOffset + 4]?.result as bigint | undefined) ?? BigInt(0);
+      const referencePriceResult = marketReferencePriceData?.[index]?.result;
+      const rawPrice = spotOracleAddressBySymbol[market.symbol]
+        ? ((referencePriceResult as readonly [bigint, bigint, bigint, bigint, bigint] | undefined)?.[1] ??
+            BigInt(0))
+        : ((referencePriceResult as bigint | undefined) ?? BigInt(0));
+      const poolState = (marketPoolData?.[index]?.result as
         | { reserve0: bigint; reserve1: bigint }
         | undefined);
-      const sharePriceRaw = (data?.[offset + 6]?.result as bigint | undefined) ?? BigInt(0);
-      const varRoundData = (data?.[offset + 7]?.result as
+      const varRoundData = (marketVarData?.[index]?.result as
         | readonly [bigint, bigint, bigint, bigint, bigint]
         | undefined);
       const varBpsRaw =
@@ -280,12 +353,15 @@ export function EarnSection() {
       const reserveUsdcRaw = isBaseCurrency0
         ? (poolState?.reserve1 ?? BigInt(0))
         : (poolState?.reserve0 ?? BigInt(0));
-      const reserveBaseAmount = Number(formatUnits(reserveBaseRaw, market.decimals));
-      const reserveUsdcAmount = Number(formatUnits(reserveUsdcRaw, 6));
-      const poolPriceUsd = reserveBaseAmount > 0 ? reserveUsdcAmount / reserveBaseAmount : 0;
-      const uniswapPrice = poolPriceUsd > 0 ? poolPriceUsd : usdPrice;
+      const { poolPriceUsd } = resolveOlympusSwapPoolMetrics({
+        reserveBaseRaw,
+        reserveQuoteRaw: reserveUsdcRaw,
+        baseDecimals: market.decimals,
+        poolId: olympusSwapPoolIdBySymbol[market.symbol],
+      });
+      const uniswapPrice = poolPriceUsd;
       const deltaSpreadPct =
-        usdPrice > 0 ? ((uniswapPrice - usdPrice) / usdPrice) * 100 : 0;
+        usdPrice > 0 && uniswapPrice > 0 ? ((uniswapPrice - usdPrice) / usdPrice) * 100 : 0;
       const usdValue = assetAmount * usdPrice;
       const debtUsdc = Number(formatUnits(rawDebt, 6));
       const creditLimitUsdc = Number(formatUnits(rawCreditLimit, 6));
@@ -327,30 +403,110 @@ export function EarnSection() {
         walletBalance: Number(formatUnits(walletBalanceRaw, market.decimals)),
         tvlPrimary: formatCompactToken(assetAmount, market.symbol),
         tvlSecondary: formatUsd(usdValue, 0),
-        oracleFeedAddress: chainlinkReferenceFeeds[market.symbol],
+        pythFeedUrl: pythInsightsFeedUrls[market.symbol],
         varDataId: varIdsBySymbol[market.symbol],
         varBps,
         varPercent,
         varUpdatedAtMs,
       };
     });
-  }, [data]);
+  }, [marketOverviewData, marketReferencePriceData, marketPoolData, marketVarData]);
 
   const earnStats = useMemo(() => {
     const totalTvl = earnMarkets.reduce((sum, market) => sum + market.usdValue, 0);
     const highestYield = earnMarkets.reduce((max, market) => Math.max(max, market.apyValue), 0);
 
     return [
-      { label: "Total TVL", value: isLoading ? "Loading..." : formatUsd(totalTvl, 0) },
+      { label: "Total TVL", value: isOverviewLoading ? "Loading..." : formatUsd(totalTvl, 0) },
       { label: "Highest market yield", value: `${highestYield.toFixed(2)}%` },
       { label: "Active markets", value: String(earnMarkets.length) },
     ];
-  }, [earnMarkets, isLoading]);
+  }, [earnMarkets, isOverviewLoading]);
 
   const selectedMarket = useMemo(
     () => earnMarkets.find((market) => market.key === selectedMarketKey) ?? null,
     [earnMarkets, selectedMarketKey],
   );
+
+  const selectedMarketOracleAddress = selectedMarket
+    ? spotOracleAddressBySymbol[selectedMarket.symbol]
+    : undefined;
+
+  const {
+    data: selectedMarketPriceReads,
+    isLoading: isSelectedMarketPriceLoading,
+  } = useReadContracts({
+    contracts:
+      selectedMarket === null
+        ? []
+        : [
+            {
+              address: olympusAddresses.uniswapPool,
+              abi: uniswapAbi,
+              functionName: "getPoolStateByKey" as const,
+              args: [toPoolKey(selectedMarket.tokenAddress, olympusAddresses.usdc)],
+              chainId: targetChain.id,
+            },
+            selectedMarketOracleAddress
+              ? {
+                  address: selectedMarketOracleAddress,
+                  abi: chainlinkAggregatorAbi,
+                  functionName: "latestRoundData" as const,
+                  chainId: targetChain.id,
+                }
+              : {
+                  address: olympusAddresses.aavePool,
+                  abi: aaveAbi,
+                  functionName: "assetPrices" as const,
+                  args: [selectedMarket.tokenAddress],
+                  chainId: targetChain.id,
+                },
+          ],
+    allowFailure: true,
+    query: {
+      enabled: Boolean(selectedMarket),
+      refetchInterval: 10000,
+    },
+  });
+
+  const selectedMarketPoolState = (selectedMarketPriceReads?.[0]?.result as
+    | { reserve0: bigint; reserve1: bigint }
+    | undefined);
+  const selectedMarketReferencePriceResult = selectedMarketPriceReads?.[1]?.result;
+  const selectedMarketReferencePriceRaw = selectedMarket
+    ? selectedMarketOracleAddress
+      ? ((selectedMarketReferencePriceResult as
+          | readonly [bigint, bigint, bigint, bigint, bigint]
+          | undefined)?.[1] ?? BigInt(0))
+      : ((selectedMarketReferencePriceResult as bigint | undefined) ?? BigInt(0))
+    : BigInt(0);
+  const selectedMarketIsBaseCurrency0 = selectedMarket
+    ? selectedMarket.tokenAddress.toLowerCase() < olympusAddresses.usdc.toLowerCase()
+    : true;
+  const selectedMarketReserveBaseRaw = selectedMarketIsBaseCurrency0
+    ? (selectedMarketPoolState?.reserve0 ?? BigInt(0))
+    : (selectedMarketPoolState?.reserve1 ?? BigInt(0));
+  const selectedMarketReserveUsdcRaw = selectedMarketIsBaseCurrency0
+    ? (selectedMarketPoolState?.reserve1 ?? BigInt(0))
+    : (selectedMarketPoolState?.reserve0 ?? BigInt(0));
+  const selectedMarketPoolMetrics = selectedMarket
+    ? resolveOlympusSwapPoolMetrics({
+        reserveBaseRaw: selectedMarketReserveBaseRaw,
+        reserveQuoteRaw: selectedMarketReserveUsdcRaw,
+        baseDecimals: selectedMarket.decimals,
+        poolId: olympusSwapPoolIdBySymbol[selectedMarket.symbol],
+      })
+    : null;
+  const selectedMarketDisplayedUsdPrice = selectedMarket
+    ? Number(formatUnits(selectedMarketReferencePriceRaw, CHAINLINK_PRICE_DECIMALS))
+    : 0;
+  const selectedMarketDisplayedSpotPrice = selectedMarketPoolMetrics?.poolPriceUsd ?? 0;
+  const selectedMarketDisplayedDeltaSpreadPct =
+    selectedMarketDisplayedUsdPrice > 0 && selectedMarketDisplayedSpotPrice > 0
+      ? ((selectedMarketDisplayedSpotPrice - selectedMarketDisplayedUsdPrice) /
+          selectedMarketDisplayedUsdPrice) *
+        100
+      : 0;
 
   const yieldSeries = useMemo(
     () => buildYieldSeries(selectedMarket?.apyValue ?? 0),
@@ -610,16 +766,17 @@ export function EarnSection() {
     (process.env.NEXT_PUBLIC_OLYMPUS_BE_URL ?? "").trim().replace(/\/$/, "");
 
   const selectedSpreadToneClass = selectedMarket
-    ? selectedMarket.deltaSpreadPct > 0.5
+    ? selectedMarketDisplayedDeltaSpreadPct > 0.5
       ? "text-red-600"
-      : selectedMarket.deltaSpreadPct < -0.5
+      : selectedMarketDisplayedDeltaSpreadPct < -0.5
         ? "text-emerald-600"
         : "text-amber-600"
     : "text-neutral-700";
   const selectedPoolHref = selectedMarket
     ? `/dashboard?tab=pools&pool=${vaultPoolIdMap[selectedMarket.key]}`
     : "/dashboard?tab=pools";
-  const isMarketLoading = isLoading;
+  const isMarketLoading =
+    isOverviewLoading || isReferencePriceLoading || isPoolStatesLoading || isVarLoading;
   const submitButtonLabel = !isConnected
     ? "Connect Wallet"
     : detailTab !== "auto"
@@ -651,7 +808,10 @@ export function EarnSection() {
       return;
     }
 
-    void refetchMarkets();
+    void refetchMarketOverview();
+    void refetchReferencePrices();
+    void refetchPoolStates();
+    void refetchVarData();
     void refetchDetailReads();
 
     if (pendingAction === "deposit" || pendingAction === "withdraw") {
@@ -663,7 +823,10 @@ export function EarnSection() {
     isActionSuccess,
     pendingAction,
     refetchDetailReads,
-    refetchMarkets,
+    refetchMarketOverview,
+    refetchPoolStates,
+    refetchReferencePrices,
+    refetchVarData,
   ]);
 
   useEffect(() => {
@@ -872,7 +1035,7 @@ export function EarnSection() {
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <a
-                href={`${TARGET_EXPLORER_BASE}/${selectedMarket.oracleFeedAddress}`}
+                href={selectedMarket.pythFeedUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="group rounded-xl border border-black/10 bg-black/[0.03] px-4 py-3 transition-colors hover:bg-black/[0.05]"
@@ -882,10 +1045,14 @@ export function EarnSection() {
                   <ArrowUpRight className="h-4 w-4 text-neutral-500 transition-colors group-hover:text-neutral-900" />
                 </div>
                 <div className="mt-1 flex items-center gap-2">
-                  <img src="/icons/Logo-Chainlink.png" alt="Chainlink" className="h-5 w-5 object-contain" />
-                  <p className="font-syne text-2xl font-bold text-neutral-950">
-                    {formatUsd(selectedMarket.usdPrice, 2)}
-                  </p>
+                  <img src="/icons/Logo-Pyth.png" alt="Pyth Network" className="h-5 w-5 object-contain" />
+                  {isSelectedMarketPriceLoading ? (
+                    <Skeleton className="h-8 w-24" />
+                  ) : (
+                    <p className="font-syne text-2xl font-bold text-neutral-950">
+                      {formatUsd(selectedMarketDisplayedUsdPrice, 2)}
+                    </p>
+                  )}
                 </div>
               </a>
 
@@ -894,23 +1061,31 @@ export function EarnSection() {
                 className="group rounded-xl border border-black/10 bg-black/[0.03] px-4 py-3 transition-colors hover:bg-black/[0.05]"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <p className="font-manrope text-xs text-neutral-600">Uniswap Spot Price</p>
+                  <p className="font-manrope text-xs text-neutral-600">OlympusSwap Spot Price</p>
                   <ArrowUpRight className="h-4 w-4 text-neutral-500 transition-colors group-hover:text-neutral-900" />
                 </div>
                 <div className="mt-1 flex items-center gap-2">
-                  <img src="/icons/Logo-Uniswap.png" alt="Uniswap" className="h-5 w-5 object-contain" />
-                  <p className="font-syne text-2xl font-bold text-neutral-950">
-                    {formatUsd(selectedMarket.uniswapPrice, 2)}
-                  </p>
+                  <img src="/icons/Logo-Hydration.png" alt="Hydration roadmap" className="h-5 w-5 object-contain" />
+                  {isSelectedMarketPriceLoading ? (
+                    <Skeleton className="h-8 w-24" />
+                  ) : (
+                    <p className="font-syne text-2xl font-bold text-neutral-950">
+                      {formatUsd(selectedMarketDisplayedSpotPrice, 2)}
+                    </p>
+                  )}
                 </div>
               </Link>
 
               <div className="rounded-xl border border-black/10 bg-black/[0.03] px-4 py-3">
                 <p className="font-manrope text-xs text-neutral-600">Delta Spread</p>
-                <p className={`mt-1 font-syne text-2xl font-bold ${selectedSpreadToneClass}`}>
-                  {selectedMarket.deltaSpreadPct >= 0 ? "+" : ""}
-                  {selectedMarket.deltaSpreadPct.toFixed(2)}%
-                </p>
+                {isSelectedMarketPriceLoading ? (
+                  <Skeleton className="mt-1 h-8 w-20" />
+                ) : (
+                  <p className={`mt-1 font-syne text-2xl font-bold ${selectedSpreadToneClass}`}>
+                    {selectedMarketDisplayedDeltaSpreadPct >= 0 ? "+" : ""}
+                    {selectedMarketDisplayedDeltaSpreadPct.toFixed(2)}%
+                  </p>
+                )}
               </div>
 
               <a
@@ -927,7 +1102,7 @@ export function EarnSection() {
                   {selectedMarket.varPercent.toFixed(2)}%
                 </p>
                 <p className="mt-1 font-manrope text-[11px] text-neutral-500">
-                  Risk floor from Chainlink VAR feed ({selectedMarket.varBps} bps)
+                  Risk floor from the Olympus backend VaR engine ({selectedMarket.varBps} bps)
                 </p>
               </a>
             </div>

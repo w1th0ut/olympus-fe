@@ -4,7 +4,7 @@ import { useMemo, useEffect, useRef, useState } from "react";
 import { motion, useInView } from "framer-motion";
 import { formatUnits } from "viem";
 import { useReadContracts } from "wagmi";
-import { uniswapAbi, vaultAbi } from "@/lib/olympus-abi";
+import { olympusSwapAbi, vaultAbi } from "@/lib/olympus-abi";
 import { olympusAddresses, toPoolKey, vaultMarkets } from "@/lib/olympus";
 import { targetChain } from "@/lib/chains";
 
@@ -63,8 +63,8 @@ export function ProtocolStatsSection() {
       chainId: targetChain.id,
     },
     {
-      address: olympusAddresses.uniswapPool,
-      abi: uniswapAbi,
+      address: olympusAddresses.olympusSwap,
+      abi: olympusSwapAbi,
       functionName: "getPoolStateByKey" as const,
       args: [toPoolKey(market.tokenAddress, olympusAddresses.usdc)],
       chainId: targetChain.id,

@@ -7,7 +7,6 @@ import { formatUnits, parseUnits, type Address } from "viem";
 import {
   ArrowDown,
   ArrowLeft,
-  ArrowUpRight,
   ChevronDown,
   ChevronRight,
   Settings,
@@ -23,6 +22,7 @@ import {
 } from "wagmi";
 import { aaveAbi, erc20Abi, uniswapAbi } from "@/lib/olympus-abi";
 import { olympusAddresses, toPoolKey } from "@/lib/olympus";
+import { resolveOlympusSwapPoolMetrics } from "@/lib/olympusSwapPricing";
 import { Skeleton } from "@/components/ui/skeleton";
 import { targetChain } from "@/lib/chains";
 
@@ -54,6 +54,8 @@ type PoolRow = {
   priceBase: number;
   volumeBase: number;
 };
+
+type PoolId = "weth-usdc" | "wbtc-usdc" | "dot-usdc";
 
 const pools: PoolRow[] = [
   {
@@ -107,9 +109,9 @@ const pools: PoolRow[] = [
     volumeBase: 620_000,
   },
   {
-    id: "link-usdc",
-    pair: "LINK/USDC",
-    icon0: "/icons/Logo-LINK.png",
+    id: "dot-usdc",
+    pair: "DOT/USDC",
+    icon0: "/icons/Logo-Polkadot.png",
     icon1: "/icons/Logo-USDC.png",
     protocol: "v4",
     feeTier: "0.3%",
@@ -120,7 +122,7 @@ const pools: PoolRow[] = [
     vol30d: "$212.2M",
     volToTvl: "0.15",
     totalApr: "35.20%",
-    reserve0: "2.1M LINK",
+    reserve0: "2.1M DOT",
     reserve1: "33.4M USDC",
     tvlValue: "$64.3M",
     tvlChange: "1.22%",
@@ -128,20 +130,18 @@ const pools: PoolRow[] = [
     vol24hChange: "8.44%",
     fees24hValue: "$28.3K",
     fees24hChange: "4.09%",
-    priceBase: 23.4,
+    priceBase: 8.4,
     volumeBase: 390_000,
   },
 ];
 
-const poolMeta: Record<string, { tokenAddress: Address; baseDecimals: number; baseSymbol: "WETH" | "WBTC" | "LINK" }> = {
+const poolMeta: Record<string, { tokenAddress: Address; baseDecimals: number; baseSymbol: "WETH" | "WBTC" | "DOT" }> = {
   "weth-usdc": { tokenAddress: olympusAddresses.weth, baseDecimals: 18, baseSymbol: "WETH" },
   "wbtc-usdc": { tokenAddress: olympusAddresses.wbtc, baseDecimals: 8, baseSymbol: "WBTC" },
-  "link-usdc": { tokenAddress: olympusAddresses.link, baseDecimals: 18, baseSymbol: "LINK" },
+  "dot-usdc": { tokenAddress: olympusAddresses.dot, baseDecimals: 18, baseSymbol: "DOT" },
 };
 
 const timeframeButtons: Timeframe[] = ["1H", "1D", "1W", "1M", "1Y", "ALL"];
-const metricButtons: MetricMode[] = ["Price", "Volume"];
-
 const timeframePoints: Record<Timeframe, number> = {
   "1H": 12,
   "1D": 24,
@@ -238,24 +238,6 @@ function formatExecutionPrice(value: number) {
   }).format(value);
 }
 
-function parseCompactAmount(value: string) {
-  const match = value.match(/([\d.,]+)\s*([KMBT]?)/i);
-  if (!match) {
-    return 0;
-  }
-
-  const numeric = Number.parseFloat(match[1].replace(/,/g, ""));
-  if (!Number.isFinite(numeric)) {
-    return 0;
-  }
-
-  const unit = match[2]?.toUpperCase() ?? "";
-  const multiplier =
-    unit === "K" ? 1_000 : unit === "M" ? 1_000_000 : unit === "B" ? 1_000_000_000 : unit === "T" ? 1_000_000_000_000 : 1;
-
-  return numeric * multiplier;
-}
-
 function valueLabel(mode: MetricMode, timeframe: Timeframe) {
   if (mode === "Price") {
     return "Current pool price";
@@ -283,7 +265,7 @@ function valueLabel(mode: MetricMode, timeframe: Timeframe) {
 export function DexPoolsSection() {
   const [selectedPoolId, setSelectedPoolId] = useState<string | null>(null);
   const [timeframe, setTimeframe] = useState<Timeframe>("1D");
-  const [metricMode, setMetricMode] = useState<MetricMode>("Volume");
+  const [metricMode] = useState<MetricMode>("Price");
   const [isTokenReversed, setIsTokenReversed] = useState(false);
   const [sellAmountInput, setSellAmountInput] = useState("");
 
@@ -300,6 +282,20 @@ export function DexPoolsSection() {
 
   const selectedPool = pools.find((pool) => pool.id === selectedPoolId) ?? null;
   const activePool = selectedPool ?? pools[0];
+
+  const { data: listPoolReads } = useReadContracts({
+    contracts: pools.map((pool) => ({
+      address: olympusAddresses.uniswapPool,
+      abi: uniswapAbi,
+      functionName: "getPoolStateByKey" as const,
+      args: [toPoolKey(poolMeta[pool.id].tokenAddress, olympusAddresses.usdc)],
+      chainId: targetChain.id,
+    })),
+    allowFailure: true,
+    query: {
+      refetchInterval: 10000,
+    },
+  });
 
   useEffect(() => {
     setIsTokenReversed(false);
@@ -350,21 +346,6 @@ export function DexPoolsSection() {
     return Array.from({ length: count }, (_, i) => chartMax - i * step);
   }, [chartMin, chartMax]);
 
-  const primaryMetricValue = useMemo(() => {
-    if (!selectedPool || chartSeries.length === 0) {
-      return "-";
-    }
-
-    if (metricMode === "Price") {
-      const token = selectedPool.pair.split(/\s*\/\s*/)[0];
-      const last = chartSeries[chartSeries.length - 1];
-      return `1 ${token} = ${formatPrice(last)}`;
-    }
-
-    const totalVolume = chartSeries.reduce((sum, point) => sum + point, 0);
-    return formatCompactCurrency(totalVolume);
-  }, [chartSeries, metricMode, selectedPool]);
-
   const lineChart = useMemo(() => {
     if (metricMode !== "Price" || chartSeries.length === 0) {
       return null;
@@ -391,57 +372,105 @@ export function DexPoolsSection() {
     return { width, height, points, linePath, areaPath };
   }, [chartMax, chartMin, chartSeries, metricMode]);
 
+  const listPoolMetrics = useMemo(() => {
+    return Object.fromEntries(
+      pools.map((pool, index) => {
+        const meta = poolMeta[pool.id];
+        const poolState = (listPoolReads?.[index]?.result as
+          | { reserve0: bigint; reserve1: bigint }
+          | undefined);
+        const isBaseCurrency0 = meta.tokenAddress.toLowerCase() < olympusAddresses.usdc.toLowerCase();
+        const reserveBaseRaw = isBaseCurrency0
+          ? (poolState?.reserve0 ?? BigInt(0))
+          : (poolState?.reserve1 ?? BigInt(0));
+        const reserveUsdcRaw = isBaseCurrency0
+          ? (poolState?.reserve1 ?? BigInt(0))
+          : (poolState?.reserve0 ?? BigInt(0));
+        const { tvlUsd, volumeUsd } = resolveOlympusSwapPoolMetrics({
+          reserveBaseRaw,
+          reserveQuoteRaw: reserveUsdcRaw,
+          baseDecimals: meta.baseDecimals,
+          poolId: pool.id as PoolId,
+        });
+
+        return [
+          pool.id,
+          {
+            tvlUsd,
+            volumeUsd,
+            tvlLabel: formatCompactCurrency(tvlUsd),
+            volumeLabel: formatCompactCurrency(volumeUsd),
+          },
+        ];
+      }),
+    ) as Record<string, { tvlUsd: number; volumeUsd: number; tvlLabel: string; volumeLabel: string }>;
+  }, [listPoolReads]);
+
   const listView = !selectedPool ? (
-      <div className="mt-8 rounded-3xl border border-black/15 bg-white p-4 text-neutral-950 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)] sm:p-6">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] border-collapse">
-            <thead>
-              <tr className="border-b border-black/10 text-left">
-                <th className="px-3 py-3 font-manrope text-sm font-semibold text-neutral-600">#</th>
-                <th className="px-3 py-3 font-manrope text-sm font-semibold text-neutral-600">Pool</th>
-                <th className="px-3 py-3 font-manrope text-sm font-semibold text-neutral-600">Protocol</th>
-                <th className="px-3 py-3 font-manrope text-sm font-semibold text-neutral-600">Fee tier</th>
-                <th className="px-3 py-3 font-manrope text-sm font-semibold text-neutral-950">TVL</th>
-                <th className="px-3 py-3 font-manrope text-sm font-semibold text-neutral-600">Pool APR</th>
-                <th className="px-3 py-3 font-manrope text-sm font-semibold text-neutral-600">Reward APR</th>
-                <th className="px-3 py-3 font-manrope text-sm font-semibold text-neutral-600">1D vol</th>
-                <th className="px-3 py-3 font-manrope text-sm font-semibold text-neutral-600">30D vol</th>
-                <th className="px-3 py-3 font-manrope text-sm font-semibold text-neutral-600">1D vol/TVL</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pools.map((pool, index) => (
-                <tr
-                  key={pool.id}
-                  className="cursor-pointer border-b border-black/10 transition-colors hover:bg-black/[0.03]"
-                  onClick={() => setSelectedPoolId(pool.id)}
-                >
-                  <td className="px-3 py-4 font-syne text-lg font-bold text-neutral-950">{index + 1}</td>
-                  <td className="px-3 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center -space-x-2">
-                        <img src={pool.icon0} alt="" className="h-7 w-7 rounded-full border border-black/15 bg-white" />
-                        <img src={pool.icon1} alt="" className="h-7 w-7 rounded-full border border-black/15 bg-white" />
-                      </div>
-                      <span className="font-syne text-xl font-bold text-neutral-950">{pool.pair}</span>
+    <div className="mt-8 rounded-3xl border border-black/15 bg-white text-neutral-950 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[920px] border-collapse">
+          <thead>
+            <tr className="border-b border-black/10 text-left">
+              <th className="px-6 py-5 font-manrope text-xs font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                Pool Asset
+              </th>
+              <th className="px-6 py-5 font-manrope text-xs font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                24H Volume
+              </th>
+              <th className="px-6 py-5 font-manrope text-xs font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                Total Value Locked
+              </th>
+              <th className="px-6 py-5" />
+            </tr>
+          </thead>
+          <tbody>
+            {pools.map((pool) => {
+              const metrics = listPoolMetrics[pool.id] ?? {
+                tvlLabel: pool.tvlValue,
+                volumeLabel: pool.vol24hValue,
+              };
+
+              return (
+              <tr key={pool.id} className="border-b border-black/10 last:border-b-0">
+                <td className="px-6 py-6">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center -space-x-2">
+                      <img src={pool.icon0} alt="" className="h-10 w-10 rounded-full border border-black/15 bg-white" />
+                      <img src={pool.icon1} alt="" className="h-10 w-10 rounded-full border border-black/15 bg-white" />
                     </div>
-                  </td>
-                  <td className="px-3 py-4 font-syne text-lg font-bold text-neutral-950">{pool.protocol}</td>
-                  <td className="px-3 py-4 font-syne text-lg font-bold text-neutral-950">{pool.feeTier}</td>
-                  <td className="px-3 py-4 font-syne text-lg font-bold text-neutral-950">{pool.tvl}</td>
-                  <td className="px-3 py-4 font-syne text-lg font-bold text-neutral-950">{pool.poolApr}</td>
-                  <td className="px-3 py-4 font-syne text-lg font-bold text-neutral-600">{pool.rewardApr}</td>
-                  <td className="px-3 py-4 font-syne text-lg font-bold text-neutral-950">{pool.vol1d}</td>
-                  <td className="px-3 py-4 font-syne text-lg font-bold text-neutral-950">{pool.vol30d}</td>
-                  <td className="px-3 py-4 font-syne text-lg font-bold text-neutral-950">{pool.volToTvl}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    <div>
+                      <p className="font-syne text-xl font-bold text-neutral-950">{pool.pair}</p>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-6 py-6 font-syne text-2xl font-bold text-neutral-950">{metrics.volumeLabel}</td>
+                <td className="px-6 py-6 font-syne text-2xl font-bold text-neutral-950">{metrics.tvlLabel}</td>
+                <td className="px-6 py-6">
+                  <div className="flex items-center justify-end gap-3">
+                    <Link
+                      href="/dashboard?tab=earn"
+                      className="inline-flex items-center justify-center rounded-xl border border-[#7ec4f4] px-4 py-2 font-manrope text-xs font-semibold uppercase tracking-[0.12em] text-[#0f5f8f] transition-colors hover:bg-[#7ec4f4]/10"
+                    >
+                      Join Pool
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPoolId(pool.id)}
+                      className="inline-flex items-center justify-center rounded-xl border border-[#7ec4f4] px-4 py-2 font-manrope text-xs font-semibold uppercase tracking-[0.12em] text-[#0f5f8f] transition-colors hover:bg-[#7ec4f4]/10"
+                    >
+                      Details
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+            })}
+          </tbody>
+        </table>
       </div>
-    )
-    : null;
+    </div>
+  ) : null;
 
   const [pairToken0, pairToken1] = activePool.pair.split(/\s*\/\s*/);
   const sellToken = isTokenReversed ? pairToken1 : pairToken0;
@@ -490,22 +519,20 @@ export function DexPoolsSection() {
     ? (poolState?.reserve1 ?? BigInt(0))
     : (poolState?.reserve0 ?? BigInt(0));
 
-  const reserve0AmountOnchain = Number(formatUnits(reserveBaseRaw, selectedPoolMeta.baseDecimals));
-  const reserve1AmountOnchain = Number(formatUnits(reserveUsdcRaw, 6));
   const oraclePrice = Number(formatUnits(oraclePriceRaw, 8));
+  const {
+    reserveBaseAmount: reserve0Amount,
+    reserveQuoteAmount: reserve1Amount,
+    poolPriceUsd,
+  } = resolveOlympusSwapPoolMetrics({
+    reserveBaseRaw,
+    reserveQuoteRaw: reserveUsdcRaw,
+    baseDecimals: selectedPoolMeta.baseDecimals,
+    poolId: activePool.id as PoolId,
+  });
 
-  const reserve0Amount = reserve0AmountOnchain > 0
-    ? reserve0AmountOnchain
-    : parseCompactAmount(activePool.reserve0);
-  const reserve1Amount = reserve1AmountOnchain > 0
-    ? reserve1AmountOnchain
-    : parseCompactAmount(activePool.reserve1);
-
-  const dynamicPrice = reserve0Amount > 0
-    ? reserve1Amount / reserve0Amount
-    : oraclePrice > 0
-      ? oraclePrice
-      : activePool.priceBase;
+  const dynamicPrice = poolPriceUsd > 0 ? poolPriceUsd : activePool.priceBase;
+  const currentPoolPriceLabel = `1 ${pairToken0} = ${formatPrice(dynamicPrice)}`;
   const conversionRate = isTokenReversed ? 1 / dynamicPrice : dynamicPrice;
 
   const sellDecimals = isTokenReversed ? 6 : selectedPoolMeta.baseDecimals;
@@ -563,7 +590,7 @@ export function DexPoolsSection() {
     ],
     allowFailure: true,
     query: {
-      enabled: Boolean(selectedPool && address),
+      enabled: Boolean(selectedPool),
       refetchInterval: 5000,
     },
   });
@@ -615,7 +642,7 @@ export function DexPoolsSection() {
       : "High";
 
   const needsApproval = sellAmountRaw > BigInt(0) && allowanceRaw < sellAmountRaw;
-  const isSwapDataLoading = isSwapReadsLoading && Boolean(selectedPool && address);
+  const isSwapDataLoading = isSwapReadsLoading && Boolean(selectedPool);
   const hasEnoughBalance = sellAmountRaw <= sellBalanceRaw;
   const canSwap = sellAmountRaw > BigInt(0) && hasEnoughBalance;
   const actionEnabled = isConnected && !isBusy && (isOnTargetChain ? canSwap : sellAmountRaw > BigInt(0));
@@ -700,63 +727,70 @@ export function DexPoolsSection() {
         <span className="font-syne text-lg font-bold text-neutral-950">{selectedPool.pair}</span>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,2.1fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,0.9fr)]">
         <article className="rounded-3xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)] sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-3">
                 <div className="flex items-center -space-x-2">
-                  <img src={selectedPool.icon0} alt="" className="h-9 w-9 rounded-full border border-black/15 bg-white" />
-                  <img src={selectedPool.icon1} alt="" className="h-9 w-9 rounded-full border border-black/15 bg-white" />
+                  <img src={selectedPool.icon0} alt="" className="h-12 w-12 rounded-full border border-black/15 bg-white" />
+                  <img src={selectedPool.icon1} alt="" className="h-12 w-12 rounded-full border border-black/15 bg-white" />
                 </div>
-                <h3 className="font-syne text-xl font-bold text-neutral-950">{selectedPool.pair}</h3>
-                <span className="rounded-md bg-black/[0.05] px-2 py-1 font-syne text-sm font-bold text-neutral-700">
-                  {selectedPool.protocol}
-                </span>
-                <span className="rounded-md bg-black/[0.05] px-2 py-1 font-syne text-sm font-bold text-neutral-700">
-                  {selectedPool.feeTier}
-                </span>
+                <div>
+                  <h3 className="font-syne text-3xl font-bold text-neutral-950">{selectedPool.pair.replace("/", " / ")}</h3>
+                  <p className="font-manrope text-sm text-neutral-500">Polkadot-native liquidity venue</p>
+                </div>
               </div>
 
-              <p className="mt-5 font-syne text-3xl font-bold text-neutral-950 sm:text-4xl">{primaryMetricValue}</p>
-              <p className="mt-1 font-manrope text-sm text-neutral-600">{valueLabel(metricMode, timeframe)}</p>
+              {isSelectedPoolLoading ? (
+                <>
+                  <Skeleton className="mt-5 h-10 w-56" />
+                  <Skeleton className="mt-2 h-4 w-32" />
+                </>
+              ) : (
+                <>
+                  <p className="mt-5 font-syne text-4xl font-bold text-[#0f5f8f]">{currentPoolPriceLabel}</p>
+                  <p className="mt-1 font-manrope text-sm text-neutral-600">{valueLabel(metricMode, timeframe)}</p>
+                </>
+              )}
             </div>
 
+            <div className="inline-flex rounded-2xl border border-[#7ec4f4]/50 bg-[#eaf6ff] p-1">
+              {timeframeButtons.map((item) => {
+                const isActive = timeframe === item;
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setTimeframe(item)}
+                    className={`rounded-xl px-3 py-2 font-manrope text-xs font-semibold transition-colors sm:text-sm ${
+                      isActive ? "bg-[#0f5f8f] text-white" : "text-[#0f5f8f] hover:bg-[#7ec4f4]/20"
+                    }`}
+                  >
+                    {item}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="mt-6 rounded-2xl border border-black/10 bg-[#f6f6f6] p-4">
-            <div className="relative h-[320px]">
-              <div className="absolute inset-y-0 right-0 flex w-[92px] flex-col justify-between text-right">
+          <div className="mt-6 rounded-[28px] border border-[#7ec4f4]/40 bg-[linear-gradient(180deg,rgba(183,229,255,0.24),rgba(255,255,255,0.98))] p-5">
+            <div className="relative h-[360px]">
+              <div className="absolute inset-y-4 right-0 flex w-[92px] flex-col justify-between text-right">
                 {axisTicks.map((tick) => (
-                  <span key={tick} className="font-manrope text-xs text-neutral-500">
+                  <span key={tick} className="font-manrope text-xs text-[#0f5f8f]/80">
                     {formatAxisTick(tick, metricMode)}
                   </span>
                 ))}
               </div>
 
-              <div className="mr-[96px] h-full overflow-hidden rounded-lg border border-black/5 bg-[radial-gradient(circle_at_top,_rgba(236,72,153,0.12),_transparent_70%)] p-3">
-                {metricMode === "Volume" ? (
-                  <div className="flex h-full items-end gap-1">
-                    {chartSeries.map((point, index) => {
-                      const ratio = (point - chartMin) / (chartMax - chartMin || 1);
-                      const heightRatio = Math.max(ratio * 100, 3);
-                      return (
-                        <motion.div
-                          key={`${timeframe}-${metricMode}-${index}`}
-                          initial={{ height: 0 }}
-                          animate={{ height: `${heightRatio}%` }}
-                          transition={{ duration: 0.35, ease: "easeInOut", delay: index * 0.01 }}
-                          className="flex-1 rounded-sm bg-gradient-to-t from-fuchsia-500 to-pink-400"
-                        />
-                      );
-                    })}
-                  </div>
-                ) : lineChart ? (
+              <div className="mr-[96px] h-full overflow-hidden rounded-[24px] border border-[#7ec4f4]/30 bg-[linear-gradient(180deg,rgba(15,95,143,0.12),rgba(255,255,255,0.6))] p-4">
+                {lineChart ? (
                   <svg viewBox={`0 0 ${lineChart.width} ${lineChart.height}`} className="h-full w-full">
                     <defs>
-                      <linearGradient id="priceAreaGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="rgba(236,72,153,0.32)" />
-                        <stop offset="100%" stopColor="rgba(236,72,153,0.02)" />
+                      <linearGradient id="olympusPoolAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="rgba(63,164,228,0.30)" />
+                        <stop offset="100%" stopColor="rgba(63,164,228,0.03)" />
                       </linearGradient>
                     </defs>
 
@@ -770,8 +804,8 @@ export function DexPoolsSection() {
                           y1={y}
                           x2={lineChart.width - 12}
                           y2={y}
-                          stroke="rgba(15,23,42,0.12)"
-                          strokeDasharray="3 8"
+                          stroke="rgba(15,95,143,0.14)"
+                          strokeDasharray="4 8"
                         />
                       );
                     })}
@@ -780,14 +814,14 @@ export function DexPoolsSection() {
                       d={lineChart.areaPath}
                       animate={{ d: lineChart.areaPath }}
                       transition={{ duration: 0.35, ease: "easeInOut" }}
-                      fill="url(#priceAreaGradient)"
+                      fill="url(#olympusPoolAreaGradient)"
                     />
                     <motion.path
                       d={lineChart.linePath}
                       animate={{ d: lineChart.linePath }}
                       transition={{ duration: 0.35, ease: "easeInOut" }}
                       fill="none"
-                      stroke="#ec4899"
+                      stroke="#8ae0ff"
                       strokeWidth="3"
                     />
 
@@ -796,7 +830,7 @@ export function DexPoolsSection() {
                         cx={lineChart.points[lineChart.points.length - 1].x}
                         cy={lineChart.points[lineChart.points.length - 1].y}
                         r="5"
-                        fill="#ec4899"
+                        fill="#8ae0ff"
                       />
                     ) : null}
                   </svg>
@@ -804,75 +838,54 @@ export function DexPoolsSection() {
               </div>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="inline-flex rounded-full border border-black/15 bg-black/[0.03] p-1">
-                {timeframeButtons.map((item) => {
-                  const isActive = timeframe === item;
-                  return (
-                    <button
-                      key={item}
-                      type="button"
-                      onClick={() => setTimeframe(item)}
-                      className={`rounded-full px-3 py-1 font-syne text-xs font-bold transition-colors sm:text-sm ${
-                        isActive ? "bg-neutral-950 text-white" : "text-neutral-700 hover:bg-black/10"
-                      }`}
-                    >
-                      {item}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="inline-flex rounded-full border border-black/15 bg-black/[0.03] p-1">
-                {metricButtons.map((item) => {
-                  const isActive = metricMode === item;
-                  return (
-                    <button
-                      key={item}
-                      type="button"
-                      onClick={() => setMetricMode(item)}
-                      className={`rounded-full px-3 py-1 font-syne text-xs font-bold transition-colors sm:text-sm ${
-                        isActive ? "bg-neutral-950 text-white" : "text-neutral-700 hover:bg-black/10"
-                      }`}
-                    >
-                      {item}
-                    </button>
-                  );
-                })}
-              </div>
+            <div className="mt-5 flex items-center justify-between gap-3 border-t border-[#7ec4f4]/30 pt-4">
+              <span className="font-manrope text-sm text-neutral-500">Current spot route</span>
+              {isSelectedPoolLoading ? (
+                <Skeleton className="h-4 w-36" />
+              ) : (
+                <span className="font-manrope text-sm font-semibold text-[#0f5f8f]">
+                  1 {pairToken0} = {formatExecutionPrice(dynamicPrice)} {pairToken1}
+                </span>
+              )}
             </div>
           </div>
 
-          <div className="mt-6 rounded-2xl border border-black/10 bg-[#f8f8f8] p-4 sm:p-5">
-            <div className="flex items-center justify-between">
-              <div className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-white p-1">
-                <button
-                  type="button"
-                  className="rounded-full bg-neutral-950 px-3 py-1 font-syne text-xs font-bold text-white sm:text-sm"
-                >
-                  Swap
-                </button>
-                <button
-                  type="button"
-                  className="rounded-full px-3 py-1 font-syne text-xs font-bold text-neutral-500 sm:text-sm"
-                >
-                  Limit
-                </button>
+          <div className="mt-6 rounded-[28px] border border-black/10 bg-[#f8fbff] p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h4 className="font-syne text-3xl font-bold text-neutral-950">Trade assets</h4>
+                <p className="mt-1 font-manrope text-sm text-neutral-500">Swap through OlympusSwap execution routing</p>
               </div>
-
               <button
                 type="button"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-black/10 bg-white text-neutral-700 transition-colors hover:bg-black/[0.03]"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-black/10 bg-white text-neutral-700 transition-colors hover:bg-[#edf7ff]"
               >
                 <Settings className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="mt-4 space-y-2">
-              <div className="rounded-2xl border border-black/10 bg-white p-4">
-                <p className="font-manrope text-sm text-neutral-600">Sell</p>
-                <div className="mt-2 flex items-center justify-between gap-3">
-                  <div className="min-w-0 flex-1">
+            <div className="mt-6 space-y-3">
+              <div className="rounded-[26px] border border-black/10 bg-white p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-manrope text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500">Pay with</p>
+                  {isSwapDataLoading ? (
+                    <Skeleton className="h-4 w-24" />
+                  ) : (
+                    <p className="font-manrope text-xs text-neutral-500">
+                      Balance: {formatTokenAmount(walletSellBalance)} {sellToken}
+                    </p>
+                  )}
+                </div>
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-[#f8fbff] px-3 py-2 font-syne text-lg font-bold text-neutral-950"
+                  >
+                    <img src={sellIcon} alt="" className="h-8 w-8 rounded-full border border-black/15 bg-white" />
+                    {sellToken}
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                  <div className="min-w-0 flex-1 text-right">
                     <input
                       type="number"
                       min="0"
@@ -880,93 +893,81 @@ export function DexPoolsSection() {
                       value={sellAmountInput}
                       onChange={(event) => setSellAmountInput(event.target.value)}
                       placeholder="0"
-                      className="w-full bg-transparent font-syne text-3xl font-bold leading-none text-neutral-950 outline-none placeholder:text-neutral-400"
+                      className="w-full bg-transparent text-right font-syne text-4xl font-bold leading-none text-neutral-950 outline-none placeholder:text-neutral-400"
                     />
-                    <p className="mt-1 font-manrope text-sm text-neutral-500">{formatCompactCurrency(sellUsdValue)}</p>
+                    <p className="mt-2 font-manrope text-sm text-neutral-500">{formatCompactCurrency(sellUsdValue)}</p>
                   </div>
-                  <button
-                    type="button"
-                    className="inline-flex shrink-0 items-center gap-2 rounded-full border border-black/15 bg-[#f6f6f6] px-3 py-2 font-syne text-sm font-bold text-neutral-950"
-                  >
-                    <img src={sellIcon} alt="" className="h-6 w-6 rounded-full border border-black/15 bg-white" />
-                    {sellToken}
-                    <ChevronDown className="h-4 w-4" />
-                  </button>
                 </div>
-                {isSwapDataLoading ? (
-                  <Skeleton className="mt-2 ml-auto h-4 w-20" />
-                ) : (
-                  <p className="mt-2 text-right font-manrope text-xs text-neutral-500">
-                    {formatTokenAmount(walletSellBalance)} {sellToken}
-                  </p>
-                )}
               </div>
 
-              <div className="flex justify-center">
+              <div className="flex items-center justify-center">
                 <button
                   type="button"
                   onClick={() => setIsTokenReversed((previous) => !previous)}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-black/10 bg-white text-neutral-700 shadow-sm"
+                  className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-[#7ec4f4]/50 bg-white text-[#0f5f8f] shadow-sm"
                 >
                   <ArrowDown className="h-4 w-4" />
                 </button>
               </div>
 
-              <div className="rounded-2xl border border-black/10 bg-white p-4">
-                <p className="font-manrope text-sm text-neutral-600">Buy</p>
-                <div className="mt-2 flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-syne text-3xl font-bold leading-none text-neutral-950">{formatTokenAmount(buyAmount)}</p>
-                    <p className="mt-1 font-manrope text-sm text-neutral-500">{formatCompactCurrency(buyUsdValue)}</p>
-                  </div>
+              <div className="rounded-[26px] border border-black/10 bg-white p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-manrope text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500">You get</p>
+                  {isSwapDataLoading ? (
+                    <Skeleton className="h-4 w-24" />
+                  ) : (
+                    <p className="font-manrope text-xs text-neutral-500">
+                      Balance: {formatTokenAmount(walletBuyBalance)} {buyToken}
+                    </p>
+                  )}
+                </div>
+                <div className="mt-4 flex items-center justify-between gap-3">
                   <button
                     type="button"
-                    className="inline-flex items-center gap-2 rounded-full border border-black/15 bg-[#f6f6f6] px-3 py-2 font-syne text-sm font-bold text-neutral-950"
+                    className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-[#f8fbff] px-3 py-2 font-syne text-lg font-bold text-neutral-950"
                   >
-                    <img src={buyIcon} alt="" className="h-6 w-6 rounded-full border border-black/15 bg-white" />
+                    <img src={buyIcon} alt="" className="h-8 w-8 rounded-full border border-black/15 bg-white" />
                     {buyToken}
                     <ChevronDown className="h-4 w-4" />
                   </button>
+                  <div className="text-right">
+                    <p className="font-syne text-4xl font-bold leading-none text-neutral-950">{formatTokenAmount(buyAmount)}</p>
+                    <p className="mt-2 font-manrope text-sm text-neutral-500">{formatCompactCurrency(buyUsdValue)}</p>
+                  </div>
                 </div>
-                {isSwapDataLoading ? (
-                  <Skeleton className="mt-2 ml-auto h-4 w-20" />
-                ) : (
-                  <p className="mt-2 text-right font-manrope text-xs text-neutral-500">
-                    {formatTokenAmount(walletBuyBalance)} {buyToken}
-                  </p>
-                )}
               </div>
             </div>
-            <div className="mt-3 rounded-2xl border border-black/10 bg-white px-4 py-3">
+
+            <div className="mt-4 rounded-[26px] border border-black/10 bg-white px-4 py-4">
               <div className="flex items-center justify-between gap-3">
-                <p className="font-manrope text-xs text-neutral-600">Execution price</p>
+                <p className="font-manrope text-sm text-neutral-600">Execution price</p>
                 {isSwapDataLoading ? (
                   <Skeleton className="h-4 w-32" />
                 ) : (
-                  <p className="font-manrope text-xs text-neutral-900">
+                  <p className="font-manrope text-sm font-semibold text-neutral-900">
                     {sellAmountRaw > BigInt(0)
-                      ? `1 ${sellToken} ~ ${formatExecutionPrice(executionPrice)} ${buyToken}`
-                      : "-"}
+                      ? `1 ${sellToken} = ${formatExecutionPrice(executionPrice)} ${buyToken}`
+                      : `1 ${sellToken} = ${formatExecutionPrice(conversionRate)} ${buyToken}`}
                   </p>
                 )}
               </div>
-              <div className="flex items-center justify-between gap-3">
-                <p className="font-manrope text-xs text-neutral-600">Fee ({feeRatePercent.toFixed(2)}%)</p>
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <p className="font-manrope text-sm text-neutral-600">Fee ({feeRatePercent.toFixed(2)}%)</p>
                 {isSwapDataLoading ? (
                   <Skeleton className="h-4 w-20" />
                 ) : (
-                  <p className="font-manrope text-xs text-neutral-900">
+                  <p className="font-manrope text-sm font-semibold text-neutral-900">
                     {sellAmountRaw > BigInt(0) ? `${formatTokenAmount(feeAmount)} ${sellToken}` : "-"}
                   </p>
                 )}
               </div>
-              <div className="mt-1 flex items-center justify-between gap-3">
-                <p className="font-manrope text-xs text-neutral-600">Price impact</p>
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <p className="font-manrope text-sm text-neutral-600">Price impact</p>
                 {isSwapDataLoading ? (
                   <Skeleton className="h-4 w-24" />
                 ) : (
                   <p
-                    className={`font-manrope text-xs ${
+                    className={`font-manrope text-sm font-semibold ${
                       priceImpactLevel === "High"
                         ? "text-red-600"
                         : priceImpactLevel === "Medium"
@@ -974,21 +975,22 @@ export function DexPoolsSection() {
                           : "text-emerald-600"
                     }`}
                   >
-                    {sellAmountRaw > BigInt(0) ? `${priceImpactPercent.toFixed(2)}% (${priceImpactLevel})` : "-"}
+                    {sellAmountRaw > BigInt(0) ? `${priceImpactPercent.toFixed(2)}%` : "-"}
                   </p>
                 )}
               </div>
-              <div className="mt-1 flex items-center justify-between gap-3">
-                <p className="font-manrope text-xs text-neutral-600">Fee value</p>
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <p className="font-manrope text-sm text-neutral-600">Fee value</p>
                 {isSwapDataLoading ? (
                   <Skeleton className="h-4 w-16" />
                 ) : (
-                  <p className="font-manrope text-xs text-neutral-900">
+                  <p className="font-manrope text-sm font-semibold text-neutral-900">
                     {sellAmountRaw > BigInt(0) ? formatFeeCurrency(feeUsdValue) : "-"}
                   </p>
                 )}
               </div>
             </div>
+
             <button
               type="button"
               onClick={() => {
@@ -997,7 +999,7 @@ export function DexPoolsSection() {
               disabled={!actionEnabled}
               className={`mt-4 w-full rounded-2xl px-4 py-3 font-syne text-base font-bold transition-opacity ${
                 actionEnabled
-                  ? "bg-gradient-to-r from-fuchsia-600 to-pink-500 text-white hover:opacity-90"
+                  ? "bg-[linear-gradient(90deg,#0f5f8f,#3fa4e4)] text-white hover:opacity-90"
                   : "bg-black/10 text-neutral-500"
               }`}
             >
@@ -1009,19 +1011,19 @@ export function DexPoolsSection() {
         <div className="space-y-4">
           <Link
             href="/dashboard?tab=earn"
-            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-fuchsia-600 to-pink-500 px-4 py-3 font-syne text-base font-bold text-white transition-opacity hover:opacity-90"
+            className="inline-flex w-full items-center justify-center rounded-2xl border border-[#7ec4f4] bg-white px-4 py-3 font-syne text-base font-bold text-[#0f5f8f] transition-colors hover:bg-[#7ec4f4]/10"
           >
-            Deposit on Olympus
-            <ArrowUpRight className="h-4 w-4" />
+            Join pool from earn
           </Link>
 
           <article className="rounded-3xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
-            <p className="font-manrope text-sm font-semibold text-neutral-600">Total APR</p>
-            <p className="mt-2 font-syne text-3xl font-bold text-neutral-950">{selectedPool.totalApr}</p>
+            <p className="font-manrope text-sm font-semibold text-neutral-600">Pool fee tier</p>
+            <p className="mt-2 font-syne text-3xl font-bold text-neutral-950">{selectedPool.feeTier}</p>
+            <p className="mt-1 font-manrope text-sm text-neutral-500">OlympusSwap spot pool execution fee</p>
           </article>
 
           <article className="rounded-3xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
-            <h4 className="font-syne text-xl font-bold text-neutral-950">Stats</h4>
+            <h4 className="font-syne text-xl font-bold text-neutral-950">Pool stats</h4>
 
             <div className="mt-5 space-y-5">
               <div>
@@ -1045,14 +1047,14 @@ export function DexPoolsSection() {
                       className="h-full transition-all"
                       style={{ width: `${reserve0BarWidth}%`, backgroundColor: reserve0Color }}
                     />
-                    <div className="h-full bg-[#ec4899] transition-all" style={{ width: `${reserve1BarWidth}%` }} />
+                    <div className="h-full bg-[#7ec4f4] transition-all" style={{ width: `${reserve1BarWidth}%` }} />
                   </div>
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <p className="font-manrope text-xs" style={{ color: reserve0Color }}>
                     {pairToken0} {reserve0Share.toFixed(1)}%
                   </p>
-                  <p className="font-manrope text-xs text-[#ec4899]">{pairToken1} {reserve1Share.toFixed(1)}%</p>
+                  <p className="font-manrope text-xs text-[#0f5f8f]">{pairToken1} {reserve1Share.toFixed(1)}%</p>
                 </div>
               </div>
 
