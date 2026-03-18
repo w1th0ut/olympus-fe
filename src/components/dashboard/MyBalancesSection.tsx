@@ -8,6 +8,7 @@ import {
   useAccount,
   useChainId,
   useReadContracts,
+  useSwitchChain,
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
@@ -125,6 +126,7 @@ type WalletAssetSymbol = WalletAsset["symbol"];
 export function MyBalancesSection() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
+  const { switchChainAsync, isPending: isSwitchingChain } = useSwitchChain();
   const isOnTargetChain = chainId === targetChain.id;
   const activitiesPerPage = 2;
   const [activityPage, setActivityPage] = useState(1);
@@ -285,7 +287,7 @@ export function MyBalancesSection() {
     0,
   );
 
-  const isFaucetBusy = isFaucetPending || isFaucetConfirming;
+  const isFaucetBusy = isSwitchingChain || isFaucetPending || isFaucetConfirming;
 
   const walletBalances = useMemo(
     () =>
@@ -337,7 +339,16 @@ export function MyBalancesSection() {
 
 
   async function handleTokenFaucet(asset: WalletAsset) {
-    if (!isConnected || !isOnTargetChain || isFaucetBusy) return;
+    if (!isConnected || isFaucetBusy) return;
+
+    if (!isOnTargetChain) {
+      try {
+        await switchChainAsync({ chainId: targetChain.id });
+      } catch (error) {
+        console.error("Failed to switch to Polkadot Hub TestNet before faucet request", error);
+        return;
+      }
+    }
 
     const targetAsset = walletBalances.find((item) => item.symbol === asset.symbol);
     if (!targetAsset || targetAsset.isFaucetDisabled || !targetAsset.canClaimFaucet) return;

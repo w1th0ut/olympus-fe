@@ -6,8 +6,8 @@ export const polkadotHubTestnet = defineChain({
   name: "Polkadot Hub TestNet",
   network: "polkadot-hub-testnet",
   nativeCurrency: {
-    name: "DOT",
-    symbol: "DOT",
+    name: "PAS",
+    symbol: "PAS",
     decimals: 18,
   },
   rpcUrls: {
