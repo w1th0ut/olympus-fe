@@ -859,10 +859,12 @@ export function EarnSection() {
           setIsGuardianLogsRefreshing(true);
         }
         const params = new URLSearchParams({
-          workflow: "olympus-reporter",
           limit: "50",
         });
-        const logsResponse = await fetch(`${backendBaseUrl}/api/reporter/logs?${params.toString()}`, {
+        if (selectedMarket?.symbol) {
+          params.set("poolTag", selectedMarket.symbol);
+        }
+        const logsResponse = await fetch(`${backendBaseUrl}/api/activity-feed?${params.toString()}`, {
           signal: abortController.signal,
           cache: "no-store",
         });
@@ -892,8 +894,9 @@ export function EarnSection() {
                     ? item.observedAtMs
                     : Date.now(),
                 poolTag: item.poolTag,
-                }))
+              }))
               .filter((item) => item.reason.trim().length > 0)
+              .filter((item) => item.event !== "WorkerHeartbeat")
               .filter((item) => {
                 const poolTag = (item.poolTag ?? "").trim().toUpperCase();
                 if (poolTag.length === 0 || poolTag === "GLOBAL") {
