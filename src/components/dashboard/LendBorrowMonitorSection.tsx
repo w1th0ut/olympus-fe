@@ -9,6 +9,7 @@ import { targetChain, targetExplorerAddressBase } from "@/lib/chains";
 import { aaveAbi, erc20Abi, uniswapAbi, vaultAbi } from "@/lib/olympus-abi";
 import { olympusAddresses, toPoolKey, vaultMarkets } from "@/lib/olympus";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useInitialSkeleton } from "@/hooks/useInitialSkeleton";
 
 const HEALTH_RANGE_LABELS = {
   "24h": ["00h", "04h", "08h", "12h", "16h", "20h", "24h"],
@@ -169,6 +170,7 @@ export function LendBorrowMonitorSection() {
   });
 
   const isMonitorLoading = isLoading;
+  const isInitialSectionLoading = useInitialSkeleton(isMonitorLoading);
 
   const usdcPriceRaw = (data?.[0]?.result as bigint | undefined) ?? BigInt(100000000);
   const aaveUsdcBalanceRaw = (data?.[1]?.result as bigint | undefined) ?? BigInt(0);
@@ -339,11 +341,11 @@ export function LendBorrowMonitorSection() {
   const thresholdY =
     CHART_HEIGHT - CHART_PADDING - thresholdRatio * (CHART_HEIGHT - CHART_PADDING * 2);
 
-  if (isMonitorLoading) {
+  if (isInitialSectionLoading) {
     return (
       <div className="mt-8 space-y-7">
         <section className="space-y-4">
-          <h2 className="font-syne text-xl font-bold text-neutral-950 sm:text-2xl">Hydration Protocol Stats</h2>
+          <Skeleton className="h-8 w-52" />
           <div className="grid grid-cols-1 gap-4 2xl:grid-cols-3">
             {Array.from({ length: 3 }).map((_, index) => (
               <article
@@ -362,7 +364,7 @@ export function LendBorrowMonitorSection() {
         <div className="h-[3px] w-full rounded-full bg-black/30" />
 
         <section className="space-y-4">
-          <h2 className="font-syne text-xl font-bold text-neutral-950 sm:text-2xl">Olympus Vault Stats</h2>
+          <Skeleton className="h-8 w-48" />
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             {Array.from({ length: 2 }).map((_, index) => (
               <article

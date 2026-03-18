@@ -33,6 +33,7 @@ import {
   resolveOlympusSwapPoolMetrics,
 } from "@/lib/olympusSwapPricing";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useInitialSkeleton } from "@/hooks/useInitialSkeleton";
 
 const DEFAULT_POOL_BORROW_CAP_USDC = 1_000_000;
 const TARGET_EXPLORER_BASE = targetExplorerAddressBase;
@@ -817,6 +818,12 @@ export function EarnSection() {
     : "/dashboard?tab=pools";
   const isMarketLoading =
     isOverviewLoading || isReferencePriceLoading || isPoolStatesLoading || isVarLoading;
+  const isInitialMarketLoading = useInitialSkeleton(isMarketLoading && !selectedMarket);
+  const isInitialDetailLoading = useInitialSkeleton(
+    Boolean(selectedMarket) &&
+      (isDetailLoading || isSelectedMarketPriceLoading || isGuardianLogsLoading),
+    { resetKey: selectedMarketKey },
+  );
   const submitButtonLabel = !isConnected
     ? "Connect Wallet"
     : detailTab !== "auto"
@@ -1038,6 +1045,80 @@ export function EarnSection() {
   }
 
   if (selectedMarket) {
+    if (isInitialDetailLoading) {
+      return (
+        <div className="mt-8 space-y-6">
+          <Skeleton className="h-9 w-40 rounded-md" />
+
+          <section className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-12 w-12 rounded-full" />
+                <div className="space-y-2">
+                  <Skeleton className="h-8 w-52" />
+                  <Skeleton className="h-4 w-60" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div
+                    key={`earn-top-card-skeleton-${index}`}
+                    className="rounded-xl border border-black/10 bg-black/[0.03] px-4 py-3"
+                  >
+                    <Skeleton className="h-4 w-24" />
+                    <div className="mt-2 flex items-center gap-2">
+                      <Skeleton className="h-5 w-5 rounded-full" />
+                      <Skeleton className="h-8 w-24" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="grid grid-cols-1 items-stretch gap-4 2xl:grid-cols-[minmax(0,1.85fr)_minmax(0,1fr)]">
+            <div className="flex h-full flex-col gap-4">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <article
+                  key={`earn-left-skeleton-${index}`}
+                  className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]"
+                >
+                  <Skeleton className="h-7 w-44" />
+                  <div className="mt-4 space-y-3">
+                    <Skeleton className="h-36 w-full rounded-xl" />
+                    <Skeleton className="h-4 w-[86%]" />
+                    <Skeleton className="h-4 w-[72%]" />
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            <div className="flex h-full flex-col gap-4">
+              <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
+                <Skeleton className="h-10 w-full rounded-xl" />
+                <Skeleton className="mt-4 h-10 w-full rounded-xl" />
+                <div className="mt-4 space-y-4">
+                  <Skeleton className="h-20 w-full rounded-lg" />
+                  <Skeleton className="h-20 w-full rounded-lg" />
+                  <Skeleton className="h-14 w-full rounded-md" />
+                </div>
+              </article>
+
+              <article className="flex flex-1 flex-col rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
+                <Skeleton className="h-7 w-36" />
+                <div className="mt-4 space-y-3">
+                  {Array.from({ length: 5 }).map((_, index) => (
+                    <Skeleton key={`earn-right-skeleton-${index}`} className="h-12 w-full rounded-lg" />
+                  ))}
+                </div>
+              </article>
+            </div>
+          </section>
+        </div>
+      );
+    }
+
     return (
       <div className="mt-8 space-y-6">
         <button
@@ -1532,6 +1613,60 @@ export function EarnSection() {
 
           </div>
         </section>
+      </div>
+    );
+  }
+
+  if (isInitialMarketLoading) {
+    return (
+      <div className="mt-8 space-y-6">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <article
+              key={`earn-summary-skeleton-${index}`}
+              className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]"
+            >
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="mt-2 h-8 w-24" />
+            </article>
+          ))}
+        </div>
+
+        <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
+          <div className="overflow-x-auto">
+            <div className="min-w-[680px]">
+              <div className="grid grid-cols-[2fr_1fr_1.2fr_1fr_0.4fr] px-4 pb-2">
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <Skeleton key={`earn-list-header-skeleton-${index}`} className="h-4 w-20" />
+                ))}
+              </div>
+              <div className="h-px bg-black/20" />
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={`earn-list-row-skeleton-${index}`}>
+                  <div className="grid grid-cols-[2fr_1fr_1.2fr_1fr_0.4fr] items-center px-4 py-4">
+                    <div className="flex items-center gap-3">
+                      <Skeleton className="h-8 w-8 rounded-full" />
+                      <Skeleton className="h-6 w-20" />
+                    </div>
+                    <Skeleton className="h-6 w-16" />
+                    <div className="space-y-2">
+                      <Skeleton className="h-6 w-24" />
+                      <Skeleton className="h-4 w-16" />
+                    </div>
+                    <div className="space-y-2">
+                      <Skeleton className="h-6 w-16" />
+                      <Skeleton className="h-2 w-24 rounded-full" />
+                    </div>
+                    <div className="flex justify-end">
+                      <Skeleton className="h-5 w-5 rounded-full" />
+                    </div>
+                  </div>
+                  <div className="h-px bg-black/20" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </article>
       </div>
     );
   }

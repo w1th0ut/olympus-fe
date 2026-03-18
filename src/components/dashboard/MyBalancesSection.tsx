@@ -16,6 +16,7 @@ import { aaveAbi, erc20Abi, mockTokenAbi, uniswapAbi, vaultAbi } from "@/lib/oly
 import { olympusAddresses, toPoolKey, vaultMarkets } from "@/lib/olympus";
 import { Skeleton } from "@/components/ui/skeleton";
 import { targetChain } from "@/lib/chains";
+import { useInitialSkeleton } from "@/hooks/useInitialSkeleton";
 
 const recentActivities = [
   {
@@ -288,6 +289,11 @@ export function MyBalancesSection() {
   );
 
   const isFaucetBusy = isSwitchingChain || isFaucetPending || isFaucetConfirming;
+  const isInitialSectionLoading = useInitialSkeleton(
+    isConnected
+      ? isPortfolioLoading || isWalletBalancesLoading || isFaucetStatusLoading
+      : false,
+  );
 
   const walletBalances = useMemo(
     () =>
@@ -387,6 +393,100 @@ export function MyBalancesSection() {
     portfolioValue: isConnected ? formatCurrency(portfolioValue, 2) : "$0.00",
     lifetimeEarnings: isConnected ? formatCurrency(lifetimeEarningsUsd, 2) : "$0.00",
   };
+
+  if (isInitialSectionLoading) {
+    return (
+      <div className="mt-8 space-y-7">
+        <section className="space-y-4">
+          <Skeleton className="h-8 w-44" />
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <article
+                key={`balances-summary-skeleton-${index}`}
+                className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]"
+              >
+                <Skeleton className="h-7 w-36" />
+                <div className="mt-4 flex items-center gap-4">
+                  <Skeleton className="h-12 w-12 rounded-xl" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-10 w-40" />
+                    <Skeleton className="h-4 w-28" />
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <div className="h-[3px] w-full rounded-full bg-black/30" />
+
+        <section className="space-y-4">
+          <Skeleton className="h-8 w-48" />
+
+          <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)]">
+            <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
+              <Skeleton className="h-7 w-48" />
+              <div className="mt-4 overflow-x-auto">
+                <div className="min-w-[640px]">
+                  <div className="grid grid-cols-[1.7fr_0.9fr_1fr_0.8fr] px-3 pb-2">
+                    {Array.from({ length: 4 }).map((_, index) => (
+                      <Skeleton key={`positions-header-skeleton-${index}`} className="h-4 w-20" />
+                    ))}
+                  </div>
+                  <div className="h-px bg-black/25" />
+                  <div className="space-y-2 py-3">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                      <div
+                        key={`positions-row-skeleton-${index}`}
+                        className="grid grid-cols-[1.7fr_0.9fr_1fr_0.8fr] items-center px-3 py-3"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Skeleton className="h-10 w-10 rounded-full" />
+                          <Skeleton className="h-5 w-20" />
+                        </div>
+                        <Skeleton className="h-5 w-16" />
+                        <Skeleton className="h-5 w-16" />
+                        <div className="flex justify-end">
+                          <Skeleton className="h-8 w-20 rounded-md" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
+              <Skeleton className="h-7 w-36" />
+              <div className="mt-4 min-h-[330px] rounded-xl border border-dashed border-black/10 bg-black/[0.03] p-4">
+                <div className="space-y-3">
+                  {Array.from({ length: 2 }).map((_, index) => (
+                    <div
+                      key={`activity-skeleton-${index}`}
+                      className="rounded-lg border border-black/10 bg-white p-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-2">
+                          <Skeleton className="h-5 w-32" />
+                          <Skeleton className="h-3 w-24" />
+                        </div>
+                        <div className="space-y-2 text-right">
+                          <Skeleton className="h-4 w-20" />
+                          <Skeleton className="h-3 w-16" />
+                        </div>
+                      </div>
+                      <Skeleton className="mt-3 h-3 w-24" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-8 space-y-7">

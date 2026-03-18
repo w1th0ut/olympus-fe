@@ -25,6 +25,7 @@ import { olympusAddresses, toPoolKey } from "@/lib/olympus";
 import { resolveOlympusSwapPoolMetrics } from "@/lib/olympusSwapPricing";
 import { Skeleton } from "@/components/ui/skeleton";
 import { targetChain } from "@/lib/chains";
+import { useInitialSkeleton } from "@/hooks/useInitialSkeleton";
 
 type Timeframe = "1H" | "1D" | "1W" | "1M" | "1Y" | "ALL";
 type MetricMode = "Price" | "Volume";
@@ -283,7 +284,7 @@ export function DexPoolsSection() {
   const selectedPool = pools.find((pool) => pool.id === selectedPoolId) ?? null;
   const activePool = selectedPool ?? pools[0];
 
-  const { data: listPoolReads } = useReadContracts({
+  const { data: listPoolReads, isLoading: isListPoolLoading } = useReadContracts({
     contracts: pools.map((pool) => ({
       address: olympusAddresses.uniswapPool,
       abi: uniswapAbi,
@@ -643,6 +644,11 @@ export function DexPoolsSection() {
 
   const needsApproval = sellAmountRaw > BigInt(0) && allowanceRaw < sellAmountRaw;
   const isSwapDataLoading = isSwapReadsLoading && Boolean(selectedPool);
+  const isInitialListLoading = useInitialSkeleton(isListPoolLoading && !selectedPool);
+  const isInitialDetailLoading = useInitialSkeleton(
+    Boolean(selectedPool) && (isSelectedPoolLoading || isSwapReadsLoading),
+    { resetKey: selectedPoolId },
+  );
   const hasEnoughBalance = sellAmountRaw <= sellBalanceRaw;
   const canSwap = sellAmountRaw > BigInt(0) && hasEnoughBalance;
   const actionEnabled = isConnected && !isBusy && (isOnTargetChain ? canSwap : sellAmountRaw > BigInt(0));
@@ -708,8 +714,156 @@ export function DexPoolsSection() {
   const dynamicVol24Value = formatCompactCurrency(Math.max(totalReserveUsd * 0.12, 0));
   const dynamicFees24Value = formatCompactCurrency(Math.max(totalReserveUsd * 0.12 * 0.003, 0));
 
+  if (!selectedPool && isInitialListLoading) {
+    return (
+      <div className="mt-8 rounded-3xl border border-black/15 bg-white text-neutral-950 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[920px] border-collapse">
+            <thead>
+              <tr className="border-b border-black/10 text-left">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <th key={`dex-list-head-skeleton-${index}`} className="px-6 py-5">
+                    <Skeleton className="h-4 w-28" />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: 3 }).map((_, index) => (
+                <tr key={`dex-list-row-skeleton-${index}`} className="border-b border-black/10 last:border-b-0">
+                  <td className="px-6 py-6">
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center -space-x-2">
+                        <Skeleton className="h-10 w-10 rounded-full" />
+                        <Skeleton className="h-10 w-10 rounded-full" />
+                      </div>
+                      <Skeleton className="h-7 w-28" />
+                    </div>
+                  </td>
+                  <td className="px-6 py-6">
+                    <Skeleton className="h-8 w-24" />
+                  </td>
+                  <td className="px-6 py-6">
+                    <Skeleton className="h-8 w-24" />
+                  </td>
+                  <td className="px-6 py-6">
+                    <div className="flex items-center justify-end gap-3">
+                      <Skeleton className="h-10 w-28 rounded-xl" />
+                      <Skeleton className="h-10 w-24 rounded-xl" />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
   if (!selectedPool) {
     return listView;
+  }
+
+  if (isInitialDetailLoading) {
+    return (
+      <div className="mt-8 space-y-4 text-neutral-950">
+        <Skeleton className="h-8 w-40" />
+
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,0.9fr)]">
+          <article className="rounded-3xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)] sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-12 w-12 rounded-full" />
+                  <Skeleton className="h-12 w-12 rounded-full" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-8 w-48" />
+                    <Skeleton className="h-4 w-40" />
+                  </div>
+                </div>
+                <Skeleton className="h-10 w-56" />
+                <Skeleton className="h-4 w-28" />
+              </div>
+              <Skeleton className="h-12 w-64 rounded-2xl" />
+            </div>
+
+            <div className="mt-6 rounded-[28px] border border-[#7ec4f4]/40 bg-[linear-gradient(180deg,rgba(183,229,255,0.24),rgba(255,255,255,0.98))] p-5">
+              <Skeleton className="h-[360px] w-full rounded-[24px]" />
+              <div className="mt-5 flex items-center justify-between gap-3 border-t border-[#7ec4f4]/30 pt-4">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-4 w-36" />
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-[28px] border border-black/10 bg-[#f8fbff] p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-2">
+                  <Skeleton className="h-8 w-36" />
+                  <Skeleton className="h-4 w-48" />
+                </div>
+                <Skeleton className="h-10 w-10 rounded-2xl" />
+              </div>
+
+              <div className="mt-6 space-y-3">
+                {Array.from({ length: 2 }).map((_, index) => (
+                  <div
+                    key={`dex-trade-box-skeleton-${index}`}
+                    className="rounded-[26px] border border-black/10 bg-white p-4"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <Skeleton className="h-4 w-20" />
+                      <Skeleton className="h-4 w-24" />
+                    </div>
+                    <div className="mt-4 flex items-center justify-between gap-3">
+                      <Skeleton className="h-12 w-32 rounded-full" />
+                      <div className="space-y-2 text-right">
+                        <Skeleton className="h-8 w-24" />
+                        <Skeleton className="h-4 w-16" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 rounded-[26px] border border-black/10 bg-white px-4 py-4">
+                <div className="space-y-3">
+                  {Array.from({ length: 4 }).map((_, index) => (
+                    <div key={`dex-metric-skeleton-${index}`} className="flex items-center justify-between gap-3">
+                      <Skeleton className="h-4 w-28" />
+                      <Skeleton className="h-4 w-24" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <Skeleton className="mt-4 h-12 w-full rounded-2xl" />
+            </div>
+          </article>
+
+          <div className="space-y-4">
+            <Skeleton className="h-12 w-full rounded-2xl" />
+            <article className="rounded-3xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="mt-2 h-9 w-20" />
+              <Skeleton className="mt-2 h-4 w-40" />
+            </article>
+            <article className="rounded-3xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
+              <Skeleton className="h-7 w-28" />
+              <div className="mt-5 space-y-5">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div key={`dex-side-skeleton-${index}`} className="space-y-2">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-8 w-24" />
+                    <Skeleton className="h-4 w-16" />
+                  </div>
+                ))}
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
