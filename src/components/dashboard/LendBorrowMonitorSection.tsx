@@ -208,7 +208,9 @@ export function LendBorrowMonitorSection() {
       const reserveUsdcAmount = Number(formatUnits(reserveUsdcRaw, 6));
       const poolPriceUsd = reserveBaseAmount > 0 ? reserveUsdcAmount / reserveBaseAmount : 0;
       const oraclePriceUsd = Number(formatUnits(oraclePriceRaw, 8));
-      const marketPriceUsd = poolPriceUsd > 0 ? poolPriceUsd : oraclePriceUsd;
+      // Use the lending/oracle reference price for credit health so this panel
+      // matches the same valuation path used by vault health on-chain.
+      const marketPriceUsd = oraclePriceUsd > 0 ? oraclePriceUsd : poolPriceUsd;
 
       const marketNetAssetUsd = marketNetAssetAmount * marketPriceUsd;
       const marketDebtUsd = marketDebtUsdc * usdcPrice;

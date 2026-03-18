@@ -39,6 +39,8 @@ const TARGET_EXPLORER_BASE = targetExplorerAddressBase;
 const STAKED_VAULT_ENABLED = false;
 const CONVERT_ENABLED = false;
 const SHARE_PRICE_DECIMALS = 18;
+const HEALTH_FACTOR_DECIMALS = 18;
+const LEVERAGE_DECIMALS = 18;
 const CHAINLINK_PRICE_DECIMALS = 8;
 const MAX_GUARDIAN_LOGS = 5;
 const APY_ANNUALIZATION_WINDOW_DAYS = 30;
@@ -545,25 +547,10 @@ export function EarnSection() {
         ? selectedMarket.debtUsdc
         : 0
     : 0;
-  const totalCollateralUsd = normalizedNetAssetUsd + (selectedMarket?.debtUsdc ?? 0);
-  const healthFactor =
-    selectedMarket && selectedMarket.debtUsdc > 0
-      ? totalCollateralUsd / selectedMarket.debtUsdc
-      : null;
-  const leverageCurrent =
-    selectedMarket && normalizedNetAssetUsd > 0
-      ? (normalizedNetAssetUsd + selectedMarket.debtUsdc) / normalizedNetAssetUsd
-      : 1;
-  const longCompositionUsd = Math.max(0, normalizedNetAssetUsd);
-  const shortCompositionUsd = Math.max(0, selectedMarket?.debtUsdc ?? 0);
-  const compositionTotalUsd = longCompositionUsd + shortCompositionUsd;
-  const isCompositionEmpty = compositionTotalUsd <= 0;
-  const longCompositionPercent = isCompositionEmpty
-    ? 0
-    : (longCompositionUsd / compositionTotalUsd) * 100;
-  const shortCompositionPercent = isCompositionEmpty
-    ? 0
-    : (shortCompositionUsd / compositionTotalUsd) * 100;
+  let healthFactor: number | null = null;
+  let leverageCurrent = 1;
+  let longCompositionUsd = Math.max(0, normalizedNetAssetUsd);
+  let shortCompositionUsd = Math.max(0, selectedMarket?.debtUsdc ?? 0);
 
   const vaultAmount = Number.parseFloat(vaultInput);
   const parsedVaultAmount = Number.isFinite(vaultAmount) && vaultAmount > 0 ? vaultAmount : 0;
@@ -639,6 +626,32 @@ export function EarnSection() {
               ],
               chainId: targetChain.id,
             },
+            {
+              address: selectedMarket.vaultAddress,
+              abi: vaultAbi,
+              functionName: "getCurrentLeverage" as const,
+              chainId: targetChain.id,
+            },
+            {
+              address: selectedMarket.vaultAddress,
+              abi: vaultAbi,
+              functionName: "getHealthFactor" as const,
+              chainId: targetChain.id,
+            },
+            {
+              address: olympusAddresses.aavePool,
+              abi: aaveAbi,
+              functionName: "getUserDebt" as const,
+              args: [selectedMarket.vaultAddress, olympusAddresses.usdc],
+              chainId: targetChain.id,
+            },
+            {
+              address: olympusAddresses.aavePool,
+              abi: aaveAbi,
+              functionName: "getUserCollateral" as const,
+              args: [selectedMarket.vaultAddress, selectedMarket.tokenAddress],
+              chainId: targetChain.id,
+            },
           ],
     allowFailure: true,
     query: {
@@ -652,6 +665,10 @@ export function EarnSection() {
   const afWalletBalanceRaw = (detailReads?.[2]?.result as bigint | undefined) ?? BigInt(0);
   const oneBasePreviewSharesRaw = (detailReads?.[3]?.result as bigint | undefined) ?? BigInt(0);
   const baseTokenAllowanceRaw = (detailReads?.[4]?.result as bigint | undefined) ?? BigInt(0);
+  const currentLeverageRaw = (detailReads?.[5]?.result as bigint | undefined) ?? BigInt(0);
+  const vaultHealthFactorRaw = (detailReads?.[6]?.result as bigint | undefined) ?? BigInt(0);
+  const currentDebtRaw = (detailReads?.[7]?.result as bigint | undefined) ?? BigInt(0);
+  const currentCollateralRaw = (detailReads?.[8]?.result as bigint | undefined) ?? BigInt(0);
 
   const shareTokenDecimals = selectedMarket?.decimals ?? 18;
   const afWalletBalance = Number(formatUnits(afWalletBalanceRaw, shareTokenDecimals));
@@ -670,6 +687,29 @@ export function EarnSection() {
     selectedMarket && inputAmountRaw > BigInt(0) && sharePriceRaw > BigInt(0)
       ? (inputAmountRaw * sharePriceRaw) / (BigInt(10) ** BigInt(SHARE_PRICE_DECIMALS))
       : BigInt(0);
+
+  const hasFiniteHealthFactor =
+    vaultHealthFactorRaw > BigInt(0) &&
+    vaultHealthFactorRaw <
+      BigInt("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+
+  healthFactor = hasFiniteHealthFactor
+    ? Number(formatUnits(vaultHealthFactorRaw, HEALTH_FACTOR_DECIMALS))
+    : null;
+  leverageCurrent =
+    currentLeverageRaw > BigInt(0)
+      ? Number(formatUnits(currentLeverageRaw, LEVERAGE_DECIMALS))
+      : 1;
+  longCompositionUsd = Math.max(0, normalizedNetAssetUsd);
+  shortCompositionUsd = Number(formatUnits(currentDebtRaw, 6));
+  const compositionTotalUsd = longCompositionUsd + shortCompositionUsd;
+  const isCompositionEmpty = compositionTotalUsd <= 0;
+  const longCompositionPercent = isCompositionEmpty
+    ? 0
+    : (longCompositionUsd / compositionTotalUsd) * 100;
+  const shortCompositionPercent = isCompositionEmpty
+    ? 0
+    : (shortCompositionUsd / compositionTotalUsd) * 100;
 
   const estimatedOutputAmount = selectedMarket
     ? detailTab === "auto"
