@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Sparkles } from "lucide-react";
 import {
   useAccount,
   useBalance,
@@ -15,6 +16,7 @@ interface DashboardHeaderProps {
   title: string;
   description: string;
   activeSection?: string;
+  onOpenCopilot?: () => void;
 }
 
 function formatAddress(address?: string) {
@@ -25,7 +27,12 @@ function formatAddress(address?: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
-export function DashboardHeader({ title, description, activeSection }: DashboardHeaderProps) {
+export function DashboardHeader({
+  title,
+  description,
+  activeSection,
+  onOpenCopilot,
+}: DashboardHeaderProps) {
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
   const walletMenuRef = useRef<HTMLDivElement | null>(null);
@@ -112,6 +119,19 @@ export function DashboardHeader({ title, description, activeSection }: Dashboard
 
       <div className="flex flex-col items-start gap-2 sm:items-end">
         <div ref={walletMenuRef} className="relative flex flex-wrap items-center gap-2">
+          {activeSection ? (
+            <button
+              type="button"
+              onClick={onOpenCopilot}
+              className="inline-flex items-center gap-2 rounded-[16px] border border-neutral-950/15 bg-white px-4 py-2 shadow-[0px_10px_10px_0px_rgba(0,0,0,0.12)] transition-colors hover:bg-black/[0.03]"
+            >
+              <Sparkles className="h-4 w-4 text-neutral-900" />
+              <span className="font-syne font-bold text-neutral-950 text-sm sm:text-base">
+                AI Copilot
+              </span>
+            </button>
+          ) : null}
+
           <button
             type="button"
             onClick={handlePrimaryAction}

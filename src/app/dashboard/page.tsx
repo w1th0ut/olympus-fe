@@ -1,8 +1,9 @@
 "use client";
 
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useChainId, useSwitchChain } from "wagmi";
+import { AICopilotDrawer } from "@/components/dashboard/AICopilotDrawer";
 import {
   DashboardSidebar,
   type DashboardNavItem,
@@ -79,6 +80,7 @@ function isDashboardSectionKey(value: string | null): value is DashboardSectionK
 }
 
 function DashboardPageContent() {
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -120,13 +122,25 @@ function DashboardPageContent() {
         <DashboardSidebar items={navItems} activeKey={activeKey} onSelect={handleSelect} />
 
         <main className="flex-1 px-6 py-8 sm:px-8 lg:px-12">
-          <DashboardHeader title={active.title} description={active.description} activeSection={activeKey} />
+          <DashboardHeader
+            title={active.title}
+            description={active.description}
+            activeSection={activeKey}
+            onOpenCopilot={() => setIsCopilotOpen(true)}
+          />
 
           {activeKey === "earn" ? <EarnSection /> : null}
           {activeKey === "balances" ? <MyBalancesSection /> : null}
           {activeKey === "pools" ? <DexPoolsSection /> : null}
           {activeKey === "credit-line" ? <LendBorrowMonitorSection /> : null}
           {activeKey === "bridge" ? <BridgeSection /> : null}
+
+          <AICopilotDrawer
+            open={isCopilotOpen}
+            onOpenChange={setIsCopilotOpen}
+            activeSection={activeKey}
+            sectionTitle={active.title}
+          />
         </main>
       </div>
     </div>
