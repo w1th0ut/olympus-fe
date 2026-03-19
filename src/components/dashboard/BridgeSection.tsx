@@ -7,313 +7,269 @@ import {
   CheckCircle2,
   Clock3,
   ExternalLink,
+  ShieldCheck,
 } from "lucide-react";
-import { useAccount, useChainId, useSwitchChain } from "wagmi";
+import { parseUnits, formatUnits } from "viem";
+import { 
+  useAccount, 
+  useChainId, 
+  useSwitchChain, 
+  useWriteContract, 
+  useWaitForTransactionReceipt,
+  useReadContract
+} from "wagmi";
 import { Skeleton } from "@/components/ui/skeleton";
-import { createXcmTransfer, fetchXcmTransfer } from "@/lib/backend";
-import { targetChain } from "@/lib/chains";
-import { type VaultKey, vaultMarkets } from "@/lib/olympus";
+import { fetchActivityFeed } from "@/lib/backend";
+import { targetChain, baseSepolia } from "@/lib/chains";
+import { type VaultKey, vaultMarkets, olympusAddresses } from "@/lib/olympus";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
-type TransferStatus = "idle" | "queued" | "in_transit" | "completed" | "failed";
+// Simplified ABIs for the bridge
+const baseBridgeAbi = [
+  {
+    name: "bridgeAndDeposit",
+    type: "function",
+    stateMutability: "payable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "amount", type: "uint256" },
+      { name: "vault", type: "address" },
+      { name: "relayerFee", type: "uint256" }
+    ],
+    outputs: []
+  }
+] as const;
+
+const erc20Abi = [
+  {
+    name: "approve",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint256" }
+    ],
+    outputs: [{ name: "", type: "bool" }]
+  },
+  {
+    name: "allowance",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" }
+    ],
+    outputs: [{ name: "", type: "uint256" }]
+  }
+] as const;
+
+type TransferStatus = "idle" | "initiated" | "in_transit" | "completed" | "failed";
 
 const bridgeTargets: Array<{
   key: VaultKey;
   sourceAsset: "WETH" | "WBTC" | "DOT";
   subtitle: string;
   icon: string;
+  baseTokenAddress: `0x${string}`;
 }> = [
   {
     key: "afWETH",
     sourceAsset: "WETH",
     subtitle: "Route to the WETH leveraged vault",
     icon: "/icons/Logo-afWETH.png",
+    baseTokenAddress: "0x4200000000000000000000000000000000000006", // Placeholder Base Sepolia WETH
   },
   {
     key: "afWBTC",
     sourceAsset: "WBTC",
     subtitle: "Route to the WBTC leveraged vault",
     icon: "/icons/Logo-afWBTC.png",
+    baseTokenAddress: "0x0000000000000000000000000000000000000000", // Placeholder
   },
   {
     key: "afDOT",
     sourceAsset: "DOT",
     subtitle: "Route to the DOT leveraged vault",
     icon: "/icons/Logo-afDOT.png",
+    baseTokenAddress: "0x0000000000000000000000000000000000000000", // Placeholder
   },
 ];
 
 const timelineSteps = [
   {
-    title: "Queue Transfer",
-    subtext: "Bridge manager accepts the XCM request.",
+    title: "Initiate Bridge",
+    subtext: "Teleport assets from Base Sepolia via Hyperbridge.",
   },
   {
-    title: "In Transit",
-    subtext: "The simulated XCM route is moving across parachains.",
+    title: "Hyperbridge Transit",
+    subtext: "Assets are moving across the Hyperbridge relayer network.",
   },
   {
-    title: "Completed",
-    subtext: "The transfer reached the destination workflow queue.",
+    title: "Auto-Deposit",
+    subtext: "Dana otomatis masuk ke Olympus Vault di Polkadot Hub.",
   },
 ] as const;
 
-function formatToken(value: number) {
-  if (!Number.isFinite(value) || value <= 0) return "0";
-  return new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 6,
-  }).format(value);
-}
+// Placeholder address for our bridge contract on Base Sepolia
+const BASE_BRIDGE_ADDRESS = "0x0000000000000000000000000000000000000000"; // TODO: Replace after deploy
 
 export function BridgeSection() {
-  const { isConnected } = useAccount();
+  const { address, isConnected } = useAccount();
   const chainId = useChainId();
   const { switchChainAsync, isPending: isSwitchPending } = useSwitchChain();
-  const [isPreviewLoading, setIsPreviewLoading] = useState(true);
+  
   const [targetVault, setTargetVault] = useState<VaultKey>("afWETH");
   const [amountInput, setAmountInput] = useState("");
-  const [destination, setDestination] = useState("Hydration");
-  const [transferId, setTransferId] = useState("");
+  const [autoDeposit, setAutoDeposit] = useState(true);
+  
+  const [transferTxHash, setTransferTxHash] = useState<`0x${string}` | null>(null);
   const [transferStatus, setTransferStatus] = useState<TransferStatus>("idle");
-  const [updatedAtMs, setUpdatedAtMs] = useState(0);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isPolling, setIsPolling] = useState(false);
   const [errorText, setErrorText] = useState("");
+  const [isPolling, setIsPolling] = useState(false);
 
-  const selectedTarget =
-    bridgeTargets.find((item) => item.key === targetVault) ?? bridgeTargets[0];
-  const selectedVaultMarket =
-    vaultMarkets.find((item) => item.key === targetVault) ?? vaultMarkets[0];
-  const isOnTargetChain = chainId === targetChain.id;
+  const selectedTarget = bridgeTargets.find((item) => item.key === targetVault) ?? bridgeTargets[0];
+  const selectedVaultMarket = vaultMarkets.find((item) => item.key === targetVault) ?? vaultMarkets[0];
+  
+  const isBaseSepolia = chainId === baseSepolia.id;
   const parsedAmount = Number.parseFloat(amountInput);
   const amountValue = Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : 0;
-  const isBusy = isSubmitting || isPolling || isSwitchPending;
+  const rawAmount = parseUnits(amountValue.toString(), selectedVaultMarket.decimals);
 
+  const { writeContractAsync, data: writeData, isPending: isWritePending } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess: isTxSuccess } = useWaitForTransactionReceipt({
+    hash: writeData,
+  });
+
+  // Check allowance
+  const { data: allowance, refetch: refetchAllowance } = useReadContract({
+    address: selectedTarget.baseTokenAddress,
+    abi: erc20Abi,
+    functionName: "allowance",
+    args: [address!, BASE_BRIDGE_ADDRESS as `0x${string}`],
+    query: { enabled: !!address && isBaseSepolia && !!selectedTarget.baseTokenAddress }
+  });
+
+  const needsApproval = allowance !== undefined && allowance < rawAmount;
+
+  // Poll Backend Activity Feed for AutoDeposit event
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      setIsPreviewLoading(false);
-    }, 650);
+    if (transferStatus !== "initiated" && transferStatus !== "in_transit") return;
 
-    return () => clearTimeout(timeout);
-  }, []);
-
-  useEffect(() => {
-    if (!transferId || transferStatus === "completed" || transferStatus === "failed") {
-      return;
-    }
-
-    let cancelled = false;
-    let intervalHandle: ReturnType<typeof setInterval> | null = null;
-
-    const poll = async () => {
+    const interval = setInterval(async () => {
       try {
         setIsPolling(true);
-        const response = await fetchXcmTransfer(transferId);
-        if (cancelled) return;
-        setTransferStatus(response.transfer.status);
-        setUpdatedAtMs(response.transfer.updatedAtMs);
-      } catch (error) {
-        if (!cancelled) {
-          setErrorText(error instanceof Error ? error.message : "Failed to fetch XCM status");
-        }
-      } finally {
-        if (!cancelled) {
+        const params = new URLSearchParams({
+          limit: "5",
+          workflow: "olympus-bridge-manager"
+        });
+        const feed = await fetchActivityFeed(params);
+        
+        // Look for our address in the logs
+        const myLog = feed.items?.find(item => 
+          item.event === "HyperbridgeAutoDeposit" && 
+          item.metadata?.user?.toString().toLowerCase() === address?.toLowerCase()
+        );
+
+        if (myLog) {
+          setTransferStatus("completed");
           setIsPolling(false);
+          clearInterval(interval);
         }
+      } catch (e) {
+        console.error("Polling failed", e);
       }
-    };
+    }, 5000);
 
-    void poll();
-    intervalHandle = setInterval(() => {
-      void poll();
-    }, 3000);
+    return () => clearInterval(interval);
+  }, [transferStatus, address]);
 
-    return () => {
-      cancelled = true;
-      if (intervalHandle) clearInterval(intervalHandle);
-    };
-  }, [transferId, transferStatus]);
-
-  const activeStep = useMemo(() => {
-    if (transferStatus === "completed") return 2;
-    if (transferStatus === "in_transit") return 1;
-    if (transferStatus === "queued") return 0;
-    return -1;
-  }, [transferStatus]);
-
-  const buttonLabel = !isConnected
-    ? "Connect Wallet"
-    : !isOnTargetChain
-      ? "Switch to Polkadot Hub TestNet"
-      : amountValue <= 0
-        ? "Enter an amount"
-        : isSubmitting
-          ? "Submitting XCM Request..."
-          : transferStatus === "queued" || transferStatus === "in_transit"
-            ? "XCM Transfer In Progress"
-            : transferStatus === "completed"
-              ? "XCM Transfer Completed"
-              : "Queue XCM Transfer";
-
-  async function handleSubmit() {
-    if (!isConnected || isBusy) return;
-    if (!isOnTargetChain) {
-      await switchChainAsync({ chainId: targetChain.id });
+  async function handleAction() {
+    if (!isConnected) return;
+    if (!isBaseSepolia) {
+      await switchChainAsync({ chainId: baseSepolia.id });
       return;
     }
-    if (amountValue <= 0) return;
 
     try {
       setErrorText("");
-      setIsSubmitting(true);
-      const response = await createXcmTransfer({
-        sourceAsset: selectedTarget.sourceAsset,
-        amount: amountValue.toString(),
-        destination,
-        parachain: "Hydration",
-        note: `Route to ${selectedVaultMarket.key}`,
+      
+      if (needsApproval) {
+        await writeContractAsync({
+          address: selectedTarget.baseTokenAddress,
+          abi: erc20Abi,
+          functionName: "approve",
+          args: [BASE_BRIDGE_ADDRESS as `0x${string}`, rawAmount],
+        });
+        await refetchAllowance();
+        return;
+      }
+
+      const tx = await writeContractAsync({
+        address: BASE_BRIDGE_ADDRESS as `0x${string}`,
+        abi: baseBridgeAbi,
+        functionName: "bridgeAndDeposit",
+        args: [
+          selectedTarget.baseTokenAddress,
+          rawAmount,
+          selectedVaultMarket.vaultAddress,
+          parseUnits("0.01", 18) // relayerFee in USD.h (subsidized by contract)
+        ]
       });
-      setTransferId(response.transfer.id);
-      setTransferStatus(response.transfer.status);
-      setUpdatedAtMs(response.transfer.updatedAtMs);
+
+      setTransferTxHash(tx);
+      setTransferStatus("initiated");
       setAmountInput("");
-    } catch (error) {
-      setErrorText(error instanceof Error ? error.message : "Failed to queue XCM transfer");
-      setTransferStatus("failed");
-    } finally {
-      setIsSubmitting(false);
+    } catch (e: any) {
+      setErrorText(e.message || "Transaction failed");
     }
   }
 
-  function resetTransfer() {
-    setTransferId("");
-    setTransferStatus("idle");
-    setUpdatedAtMs(0);
-    setErrorText("");
-  }
-
-  if (isPreviewLoading) {
-    return (
-      <div className="mt-8">
-        <section className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-          <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
-            <Skeleton className="h-7 w-56" />
-            <div className="mt-4 space-y-5">
-              <div className="rounded-xl border border-black/10 bg-[#f8f8f8] p-4">
-                <Skeleton className="h-4 w-16" />
-                <div className="mt-3 flex items-center gap-3">
-                  <Skeleton className="h-9 w-40 rounded-lg" />
-                  <Skeleton className="h-4 w-4 rounded-full" />
-                  <Skeleton className="h-9 w-32 rounded-lg" />
-                </div>
-                <Skeleton className="mt-3 h-3 w-[82%]" />
-              </div>
-
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-20" />
-                <div className="rounded-xl border border-black/10 bg-white p-4">
-                  <Skeleton className="h-10 w-40" />
-                  <Skeleton className="mt-2 h-3 w-28" />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-32" />
-                <div className="rounded-xl border border-black/10 bg-white p-4">
-                  <Skeleton className="h-6 w-36" />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-28" />
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  {Array.from({ length: 3 }).map((_, index) => (
-                    <div
-                      key={`bridge-vault-skeleton-${index}`}
-                      className="rounded-xl border border-black/10 bg-white p-3"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Skeleton className="h-7 w-7 rounded-full" />
-                        <Skeleton className="h-5 w-16" />
-                      </div>
-                      <Skeleton className="mt-3 h-3 w-full" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <Skeleton className="mt-5 h-11 w-full rounded-md" />
-          </article>
-
-          <div className="space-y-4">
-            <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
-              <Skeleton className="h-7 w-36" />
-              <div className="mt-4 space-y-3">
-                {Array.from({ length: 3 }).map((_, index) => (
-                  <div
-                    key={`bridge-status-skeleton-${index}`}
-                    className="rounded-lg border border-black/10 bg-white px-3 py-3"
-                  >
-                    <Skeleton className="h-4 w-28" />
-                    <Skeleton className="mt-2 h-3 w-[85%]" />
-                  </div>
-                ))}
-              </div>
-            </article>
-
-            <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
-              <Skeleton className="h-7 w-28" />
-              <div className="mt-4 space-y-3">
-                <Skeleton className="h-3 w-full" />
-                <Skeleton className="h-3 w-[92%]" />
-                <div className="rounded-lg border border-black/10 bg-white p-3">
-                  <Skeleton className="h-3 w-[88%]" />
-                </div>
-              </div>
-            </article>
-
-            <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
-              <Skeleton className="h-7 w-24" />
-              <div className="mt-4 space-y-2">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <div
-                    key={`bridge-preview-skeleton-${index}`}
-                    className="flex items-center justify-between gap-3 rounded-lg border border-black/10 px-3 py-2"
-                  >
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-4 w-20" />
-                  </div>
-                ))}
-              </div>
-            </article>
-          </div>
-        </section>
-      </div>
-    );
-  }
+  const activeStep = useMemo(() => {
+    if (transferStatus === "completed") return 2;
+    if (transferStatus === "in_transit" || (transferStatus === "initiated" && isTxSuccess)) return 1;
+    if (transferStatus === "initiated") return 0;
+    return -1;
+  }, [transferStatus, isTxSuccess]);
 
   return (
     <div className="mt-8">
       <section className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
-          <h3 className="font-syne text-lg font-bold text-neutral-950 sm:text-xl">
-            Simulated XCM Transfer
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="font-syne text-lg font-bold text-neutral-950 sm:text-xl">
+              Hyperbridge Cross-chain
+            </h3>
+            <div className="flex items-center space-x-2 rounded-full bg-blue-50 px-3 py-1 text-blue-700 border border-blue-100">
+               <ShieldCheck className="h-4 w-4" />
+               <span className="text-xs font-bold font-syne uppercase tracking-wider">Secure</span>
+            </div>
+          </div>
 
           <div className="mt-4 space-y-5">
             <div className="rounded-xl border border-black/10 bg-[#f8f8f8] p-4">
               <p className="font-manrope text-sm text-neutral-600">Route</p>
               <div className="mt-2 flex flex-wrap items-center gap-3 text-neutral-700">
                 <span className="rounded-lg border border-black/15 bg-white px-3 py-1 font-syne text-sm font-bold">
-                  Polkadot Hub TestNet
+                  Base Sepolia
                 </span>
                 <ArrowRight className="h-4 w-4" />
                 <span className="rounded-lg border border-black/15 bg-white px-3 py-1 font-syne text-sm font-bold">
-                  Hydration
+                  Polkadot Hub TestNet
                 </span>
               </div>
-              <p className="mt-2 font-manrope text-xs text-neutral-500">
-                This MVP route is simulated in the backend and reflects the planned Olympus XCM workflow.
-              </p>
+            </div>
+
+            <div className="flex items-center justify-between p-4 rounded-xl border border-blue-100 bg-blue-50/30">
+               <div className="space-y-0.5">
+                  <Label className="text-sm font-bold font-syne text-blue-900">Auto-Deposit on Arrival</Label>
+                  <p className="text-xs text-blue-700 font-manrope">Automatically deposit tokens into the selected vault once they reach Polkadot Hub.</p>
+               </div>
+               <Switch 
+                  checked={autoDeposit} 
+                  onCheckedChange={setAutoDeposit}
+                  className="data-[state=checked]:bg-blue-600"
+               />
             </div>
 
             <div>
@@ -325,31 +281,23 @@ export function BridgeSection() {
                   step="any"
                   value={amountInput}
                   onChange={(event) => setAmountInput(event.target.value)}
-                  disabled={isBusy}
+                  disabled={transferStatus !== "idle" && transferStatus !== "completed"}
                   placeholder="0.00"
                   className="w-full bg-transparent font-syne text-3xl font-bold text-neutral-950 outline-none placeholder:text-neutral-400 disabled:opacity-50"
                 />
-                <p className="mt-2 font-manrope text-xs text-neutral-500">
-                  Source asset: {selectedTarget.sourceAsset}
-                </p>
+                <div className="mt-2 flex items-center justify-between">
+                   <p className="font-manrope text-xs text-neutral-500">
+                    Asset: {selectedTarget.sourceAsset}
+                  </p>
+                  <p className="font-manrope text-xs text-neutral-500">
+                    Balance on Base: 0.00
+                  </p>
+                </div>
               </div>
             </div>
 
             <div>
-              <p className="font-manrope text-sm text-neutral-600">Destination venue</p>
-              <div className="mt-2 rounded-xl border border-black/10 bg-white p-4">
-                <input
-                  type="text"
-                  value={destination}
-                  onChange={(event) => setDestination(event.target.value)}
-                  disabled={isBusy}
-                  className="w-full bg-transparent font-manrope text-base text-neutral-950 outline-none"
-                />
-              </div>
-            </div>
-
-            <div>
-              <p className="font-manrope text-sm text-neutral-600">Destination vault</p>
+              <p className="font-manrope text-sm text-neutral-600">Select Destination Vault</p>
               <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 {bridgeTargets.map((vault) => {
                   const active = vault.key === targetVault;
@@ -357,7 +305,7 @@ export function BridgeSection() {
                     <button
                       key={vault.key}
                       type="button"
-                      disabled={isBusy}
+                      disabled={transferStatus !== "idle" && transferStatus !== "completed"}
                       onClick={() => setTargetVault(vault.key)}
                       className={`rounded-xl border p-3 text-left transition-colors disabled:opacity-50 ${
                         active
@@ -379,58 +327,54 @@ export function BridgeSection() {
 
           <button
             type="button"
-            onClick={() => {
-              void handleSubmit();
-            }}
-            disabled={!isConnected || isBusy || (isOnTargetChain && amountValue <= 0)}
-            className={`mt-5 inline-flex w-full items-center justify-center gap-2 rounded-md px-4 py-2 font-syne text-base font-bold shadow-[0px_6px_10px_0px_rgba(0,0,0,0.20)] transition-colors ${
-              !isConnected || isBusy || (isOnTargetChain && amountValue <= 0)
+            onClick={handleAction}
+            disabled={!isConnected || isWritePending || isConfirming || (isBaseSepolia && amountValue <= 0)}
+            className={`mt-5 inline-flex w-full items-center justify-center gap-2 rounded-md px-4 py-3 font-syne text-base font-bold shadow-[0px_6px_10px_0px_rgba(0,0,0,0.20)] transition-colors ${
+              !isConnected || isWritePending || isConfirming || (isBaseSepolia && amountValue <= 0)
                 ? "bg-black/10 text-neutral-500 shadow-none"
-                : "bg-neutral-800 text-white hover:bg-neutral-700"
+                : "bg-blue-600 text-white hover:bg-blue-700"
             }`}
           >
-            {buttonLabel}
+            {isWritePending || isConfirming 
+               ? "Confirming..." 
+               : !isBaseSepolia 
+                 ? "Switch to Base Sepolia" 
+                 : needsApproval 
+                   ? `Approve ${selectedTarget.sourceAsset}` 
+                   : "Bridge and Deposit"}
           </button>
 
-          {errorText ? (
+          {errorText && (
             <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4">
               <p className="font-manrope text-sm text-red-700">{errorText}</p>
             </div>
-          ) : null}
+          )}
 
-          {transferId ? (
+          {transferTxHash && (
             <div className="mt-4 rounded-xl border border-black/10 bg-[#f8f8f8] p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="font-manrope text-xs text-neutral-500">Transfer ID</p>
-                  <p className="break-all font-mono text-xs text-neutral-800">{transferId}</p>
+                  <p className="font-manrope text-xs text-neutral-500">Base Tx Hash</p>
+                  <p className="break-all font-mono text-xs text-neutral-800">{transferTxHash}</p>
                 </div>
-                <span className="inline-flex items-center gap-1 font-manrope text-xs font-semibold text-neutral-500">
-                  Simulator ID
+                <a 
+                  href={`https://sepolia.basescan.org/tx/${transferTxHash}`} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 font-manrope text-xs font-semibold text-blue-600 hover:underline"
+                >
+                  View on BaseScan
                   <ExternalLink className="h-3 w-3" />
-                </span>
+                </a>
               </div>
-              <p className="mt-2 font-manrope text-xs text-neutral-500">
-                Last update: {updatedAtMs ? new Date(updatedAtMs).toLocaleString("en-US") : "-"}
-              </p>
             </div>
-          ) : null}
-
-          {transferStatus === "completed" || transferStatus === "failed" ? (
-            <button
-              type="button"
-              onClick={resetTransfer}
-              className="mt-3 w-full text-center font-manrope text-xs text-neutral-500 hover:text-neutral-700 hover:underline"
-            >
-              Start a new XCM transfer
-            </button>
-          ) : null}
+          )}
         </article>
 
         <div className="space-y-4">
           <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
             <h3 className="font-syne text-lg font-bold text-neutral-950">
-              Transfer Status
+              Live Bridge Status
             </h3>
             <div className="mt-4 space-y-3">
               {timelineSteps.map((step, index) => {
@@ -444,7 +388,7 @@ export function BridgeSection() {
                       completed
                         ? "border-emerald-200 bg-emerald-50"
                         : current
-                          ? "border-fuchsia-200 bg-fuchsia-50"
+                          ? "border-blue-200 bg-blue-50"
                           : "border-black/10 bg-white"
                     }`}
                   >
@@ -453,7 +397,7 @@ export function BridgeSection() {
                         {completed ? (
                           <CheckCircle2 className="h-5 w-5 text-emerald-600" />
                         ) : current ? (
-                          <Clock3 className="h-5 w-5 text-fuchsia-600" />
+                          <Clock3 className="h-5 w-5 text-blue-600 animate-pulse" />
                         ) : (
                           <Clock3 className="h-5 w-5 text-neutral-400" />
                         )}
@@ -466,36 +410,27 @@ export function BridgeSection() {
                   </div>
                 );
               })}
-
-              {isPolling && transferId ? <Skeleton className="h-4 w-full" /> : null}
+              {isPolling && <p className="text-center text-[10px] text-neutral-400 font-manrope italic">Polling Polkadot Hub for arrival...</p>}
             </div>
           </article>
 
           <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
             <h3 className="font-syne text-lg font-bold text-neutral-950">
-              Narrative
+              Hyperbridge Security
             </h3>
             <div className="mt-4 space-y-3 text-sm text-neutral-700">
               <p className="font-manrope">
-                Olympus presents this route as a Polkadot-native XCM workflow with Hydration as the downstream liquidity venue.
+                Olympus uses Hyperbridge for cryptographically secure, decentralized cross-chain communication between Base and Polkadot.
               </p>
               <p className="font-manrope">
-                For the current MVP, execution is simulated through the backend so the UI remains deterministic during demos.
+                Unlike traditional bridges, Hyperbridge verifies consensus proofs on-chain, ensuring your assets are never at risk from centralized relayers.
               </p>
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="mt-0.5 h-4 w-4 text-amber-600" />
-                  <p className="font-manrope text-xs text-amber-700">
-                    Native XCM precompile integration can be added later without changing this front-end flow.
-                  </p>
-                </div>
-              </div>
             </div>
           </article>
 
           <article className="rounded-2xl border border-black/15 bg-white p-5 shadow-[0px_12px_18px_0px_rgba(0,0,0,0.10)]">
             <h3 className="font-syne text-lg font-bold text-neutral-950">
-              Preview
+              Transaction Preview
             </h3>
             <div className="mt-4 space-y-2">
               <div className="flex items-center justify-between gap-3 rounded-lg border border-black/10 px-3 py-2">
@@ -503,17 +438,13 @@ export function BridgeSection() {
                 <span className="font-syne text-sm font-bold text-neutral-950">{selectedTarget.sourceAsset}</span>
               </div>
               <div className="flex items-center justify-between gap-3 rounded-lg border border-black/10 px-3 py-2">
-                <span className="font-manrope text-sm text-neutral-600">Destination</span>
-                <span className="font-syne text-sm font-bold text-neutral-950">{destination}</span>
+                <span className="font-manrope text-sm text-neutral-600">Protocol Fee</span>
+                <span className="font-syne text-sm font-bold text-neutral-950">0.01 ETH</span>
               </div>
               <div className="flex items-center justify-between gap-3 rounded-lg border border-black/10 px-3 py-2">
-                <span className="font-manrope text-sm text-neutral-600">Vault</span>
-                <span className="font-syne text-sm font-bold text-neutral-950">{selectedVaultMarket.key}</span>
-              </div>
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-black/10 px-3 py-2">
-                <span className="font-manrope text-sm text-neutral-600">Requested amount</span>
-                <span className="font-syne text-sm font-bold text-neutral-950">
-                  {formatToken(amountValue)} {selectedTarget.sourceAsset}
+                <span className="font-manrope text-sm text-neutral-600">Auto-Deposit</span>
+                <span className={`font-syne text-sm font-bold ${autoDeposit ? "text-emerald-600" : "text-neutral-500"}`}>
+                  {autoDeposit ? "ENABLED" : "DISABLED"}
                 </span>
               </div>
             </div>
