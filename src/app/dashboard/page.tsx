@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useChainId, useSwitchChain } from "wagmi";
 import { AICopilotDrawer } from "@/components/dashboard/AICopilotDrawer";
@@ -14,7 +14,7 @@ import { DexPoolsSection } from "@/components/dashboard/DexPoolsSection";
 import { EarnSection } from "@/components/dashboard/EarnSection";
 import { LendBorrowMonitorSection } from "@/components/dashboard/LendBorrowMonitorSection";
 import { MyBalancesSection } from "@/components/dashboard/MyBalancesSection";
-import { targetChain } from "@/lib/chains";
+import { baseSepolia, targetChain } from "@/lib/chains";
 
 const sectionMeta = {
   balances: {
@@ -86,6 +86,7 @@ function DashboardPageContent() {
   const searchParams = useSearchParams();
   const chainId = useChainId();
   const { switchChainAsync, isPending: isSwitchPending } = useSwitchChain();
+  const lastRequestedChainIdRef = useRef<number | null>(null);
 
   const tabParam = searchParams.get("tab");
   const normalizedTabParam = tabParam === "lend-borrow" ? "credit-line" : tabParam;
@@ -95,14 +96,24 @@ function DashboardPageContent() {
   const active = sectionMeta[activeKey];
 
   useEffect(() => {
-    if (activeKey === "bridge") {
-      return;
-    }
-    if (chainId === targetChain.id || isSwitchPending) {
+    const requiredChainId = activeKey === "bridge" ? baseSepolia.id : targetChain.id;
+
+    if (chainId === requiredChainId) {
+      lastRequestedChainIdRef.current = null;
       return;
     }
 
-    void switchChainAsync({ chainId: targetChain.id }).catch(() => {
+    if (isSwitchPending) {
+      return;
+    }
+
+    // Prevent repetitive wallet prompts when user rejects a switch.
+    if (lastRequestedChainIdRef.current === requiredChainId) {
+      return;
+    }
+
+    lastRequestedChainIdRef.current = requiredChainId;
+    void switchChainAsync({ chainId: requiredChainId }).catch(() => {
       // User can reject wallet switch request.
     });
   }, [activeKey, chainId, isSwitchPending, switchChainAsync]);
