@@ -23,7 +23,7 @@ const features = [
   },
   {
     title: "Anti-MEV Bot",
-    desc: "Restricted deposit so only OlympusVault can add liquidity.",
+    desc: "Restricted deposit so only OlympusVault can add liquidity There will be no MEV-bots monitoring the mempool for JIT attacks.",
     btnLabel: "See Pools",
     href: "/dashboard?tab=pools",
   },

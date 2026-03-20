@@ -421,16 +421,23 @@ export function BridgeSection() {
             <div>
               <p className="font-manrope text-sm text-neutral-600">Amount (USD.h)</p>
               <div className="mt-2 rounded-xl border border-black/10 bg-white p-4">
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={amountInput}
-                  onChange={(event) => setAmountInput(event.target.value)}
-                  disabled={transferStatus !== "idle" && transferStatus !== "completed" && transferStatus !== "failed"}
-                  placeholder="0.00"
-                  className="w-full bg-transparent font-syne text-3xl font-bold text-neutral-950 outline-none placeholder:text-neutral-400 disabled:opacity-50"
-                />
+                <div className="flex items-start justify-between gap-3">
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={amountInput}
+                    onChange={(event) => setAmountInput(event.target.value)}
+                    disabled={transferStatus !== "idle" && transferStatus !== "completed" && transferStatus !== "failed"}
+                    placeholder="0.00"
+                    className="w-full bg-transparent font-syne text-3xl font-bold text-neutral-950 outline-none placeholder:text-neutral-400 disabled:opacity-50"
+                  />
+                  <img
+                    src="/icons/Logo-Hyperbridge.png"
+                    alt="Hyperbridge"
+                    className="h-10 w-10 shrink-0 rounded-lg border border-black/10 bg-white p-1 object-contain"
+                  />
+                </div>
                 <div className="mt-2 flex items-center justify-between">
                   <p className="font-manrope text-xs text-neutral-500">Source token: USD.h</p>
                   <p className="font-manrope text-xs text-neutral-500">Balance on Base: {sourceBalanceText} USD.h</p>

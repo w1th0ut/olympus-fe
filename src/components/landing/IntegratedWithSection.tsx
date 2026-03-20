@@ -7,9 +7,9 @@ import { staggerContainer, staggerItem } from "@/components/landing/animations";
 const partners = [
   { name: "Polkadot Hub TestNet", logo: "/icons/Logo-Polkadot Hub TestNet.png" },
   { name: "Pyth Network", logo: "/icons/Logo-Pyth.png" },
-  { name: "Polkadot XCM", logo: "/icons/Logo-Polkadot Big.png" },
-  { name: "Hydration (DEX)", logo: "/icons/Logo-Hydration.png" },
-  { name: "Hydration (Lend)", logo: "/icons/Logo-Hydration.png" },
+  { name: "Polkadot Agent Kit", logo: "/icons/Logo-Polkadot Big.png" },
+  { name: "Hydration (DEX & Lend)", logo: "/icons/Logo-Hydration.png" },
+  { name: "Hyperbridge (XCM)", logo: "/icons/Logo-Hyperbridge-Big.png" },
   { name: "Gemini API", logo: "/icons/Logo-Gemini.png" },
 ];
 
