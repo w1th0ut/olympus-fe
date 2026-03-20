@@ -1,0 +1,37 @@
+---
+title: AI Agent
+description: Simple overview of Olympus AI Copilot and Polkadot Agent Kit integration.
+---
+
+# AI Agent
+
+Olympus includes an AI Copilot layer (`olympus-agent`) for operator-friendly protocol guidance.
+
+The agent is connected to:
+- Olympus backend APIs (market, activity, protocol overview).
+- Polkadot Agent Kit tools for native-chain actions.
+- Gemini reasoning for response planning and action guidance.
+
+## What It Does
+
+- Summarizes protocol status across WETH, WBTC, and DOT markets.
+- Reads guardian activity and highlights operational signals.
+- Supports tool-driven checks (for example native balance and readiness).
+- Provides guided responses in the dashboard copilot drawer.
+
+## Runtime Path (Simple)
+
+1. User sends prompt from FE drawer.
+2. Agent reads Olympus backend context.
+3. Agent plans response and optional tool execution.
+4. Agent returns concise protocol-aware output to FE.
+
+## Diagram
+
+<div style={{ display: "flex", justifyContent: "center" }}>
+  <img
+    src="/images/diagram-image/Agent-Diagram.png"
+    alt="Olympus AI Agent Diagram"
+    style={{ width: "100%", maxWidth: "880px", height: "auto" }}
+  />
+</div>

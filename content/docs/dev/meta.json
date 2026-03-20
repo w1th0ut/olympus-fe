@@ -2,7 +2,9 @@
   "title": "Dev",
   "pages": [
     "technical-flow",
-    "chainlink-workflow",
+    "backend-workflow",
+    "xcm-bridge",
+    "ai-agent",
     "smart-contracts"
   ]
 }

@@ -1,0 +1,171 @@
+---
+title: Backend Workflow
+description: Olympus backend role engine for risk control, valuation, and bridge observability.
+---
+
+# Backend Workflow
+
+## The Olympus Backend Engine
+
+Olympus runs as a role-based backend system on Polkadot Hub TestNet.
+Instead of user-only interaction loops, backend workers continuously evaluate market and protocol state, then publish logs and execute selected on-chain updates.
+
+The backend engine is responsible for:
+- Risk defense during volatility and spot/oracle divergence.
+- Vault health monitoring and rebalance decisions.
+- NAV and VaR computation with on-chain cache publication.
+- Cross-chain bridge delivery tracking and auto-deposit observability.
+- Human-readable protocol activity logs for dashboard transparency.
+
+## Role Map (7 Roles)
+
+1. Defender
+2. Strategist
+3. Auditor
+4. Accountant
+5. Bridge Manager
+6. Reporter
+7. VaR Calculator
+
+## Runtime Model
+
+Backend execution is driven by `workerPolkadotHub` and runs per tick with role-specific intervals and policies.
+
+Core flow per cycle:
+1. Sync market prices from Pyth/Hermes into backend state.
+2. Read on-chain snapshots (vault state, spot state, guard state, receiver events).
+3. Execute enabled roles and evaluate policies.
+4. Broadcast required on-chain writes.
+5. Publish structured activity logs through reporter endpoints.
+
+## Role Details
+
+## 1) Defender
+
+![Defender Diagram](/images/diagram-image/The-Defender-Diagram.png)
+
+Purpose:
+- Protect LP execution quality under volatility/divergence.
+
+Main logic:
+- Read oracle-reference + OlympusSwap spot.
+- Compute divergence and volatility severity.
+- Step dynamic fee toward policy target.
+- Write fee updates through `LVRHook.setDynamicFeeWithReason(...)` when required.
+
+Output:
+- `DynamicFeeAdjusted` or `DynamicFeeMaintained` logs.
+
+## 2) Strategist
+
+![Strategist Diagram](/images/diagram-image/The-Strategist-Diagram.png)
+
+Purpose:
+- Keep vault leverage and health factor within configured bands.
+
+Main logic:
+- Read per-vault health factor and leverage state.
+- Evaluate threshold and cooldown rules.
+- Trigger monitor/rebalance actions when drift is outside policy.
+
+Output:
+- `VaultMonitoringUpdated` logs and optional rebalance writes.
+
+## 3) Auditor
+
+![Auditor Diagram](/images/diagram-image/The-Auditor-Diagram.png)
+
+Purpose:
+- Enforce safety guardrails for vault and borrowing paths.
+
+Main logic:
+- Classify severity by health-factor risk zone.
+- Apply guard actions when risk escalates (`warn`, `critical`, `emergency`).
+
+Output:
+- `VaultHealthHealthy` / risk-state logs and pause-related actions when configured.
+
+## 4) Accountant
+
+![Accountant Diagram](/images/diagram-image/The-Accountant-Diagram.png)
+
+Purpose:
+- Compute NAV per market and publish it for protocol consumers.
+
+Main logic:
+- Read vault snapshots.
+- Compute NAV off-chain per asset market.
+- Publish to `OlympusDataCache.updateRoundData(NAV_ID, ...)`.
+
+Output:
+- `NavComputed` logs and on-chain NAV feed updates.
+
+## 5) Bridge Manager
+
+![Bridge Manager Diagram](/images/diagram-image/The-Cross-Chain-Manager-Diagram.png)
+
+Purpose:
+- Track cross-chain delivery and destination auto-deposit flow.
+
+Main logic:
+- Watch `OlympusPolkadotReceiver` events.
+- Detect successful bridge-to-vault auto-deposit events.
+- Publish bridge lifecycle logs for frontend status.
+
+Output:
+- `HyperbridgeAutoDeposit` and bridge heartbeat activity logs.
+
+## 6) Reporter
+
+![Reporter Diagram](/images/diagram-image/The-Reporter-Diagram.png)
+
+Purpose:
+- Publish readable protocol activity and cycle summaries.
+
+Main logic:
+- Collect role outputs and normalized state context.
+- Build user-facing reasoning text.
+- Push events into reporter log store/API.
+
+Output:
+- `WorkflowCycleSummary` and role-level timeline logs.
+
+## 7) VaR Calculator
+
+![VaR Calculator Diagram](/images/diagram-image/The-VAR-Manager-Diagram.png)
+
+Purpose:
+- Compute risk tail metrics for each market.
+
+Main logic:
+- Read cached market history.
+- Compute one-sided VaR (confidence-based).
+- Publish to `OlympusDataCache.updateRoundData(VAR_ID, ...)`.
+
+Output:
+- `VarComputed` logs and on-chain VaR feed updates.
+
+## Data Surfaces
+
+- API:
+  - `/api/activity-feed`
+  - `/api/market/prices`
+  - `/api/protocol/overview`
+- Frontend:
+  - Recent Activity
+  - AI Guardian logs in vault views
+  - DEX/Earn/Credit Line status indicators
+- On-chain:
+  - Dynamic fee state (`LVRHook`)
+  - NAV and VaR feeds (`OlympusDataCache`)
+  - Bridge receiver events (`OlympusPolkadotReceiver`)
+
+## Operations
+
+Local backend run target:
+
+```bash
+npm run dev:polkadot-hub
+```
+
+Role behavior is configurable from backend environment settings (enable flags, intervals, thresholds, and on-chain addresses).

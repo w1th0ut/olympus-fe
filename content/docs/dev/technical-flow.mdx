@@ -1,29 +1,30 @@
 ---
 title: Technical Flow
-description: System architecture, core concepts, contract architecture, and math foundation of Olympus.
+description: System architecture, protocol concepts, contract architecture, and math foundation of Olympus Finance.
 ---
 
 # Technical Flow
 
-This page explains how Olympus works from architecture, protocol design, contracts, and math.
+This page explains Olympus from system architecture to contract execution and risk math.
 
-## 🛠️System Architecture
+## System Architecture
 
-Olympus is designed as a layered system:
+Olympus is designed as a layered system aligned with the current production-style stack:
 
 - Frontend Layer (`olympus-fe`)
-  - User interaction for Earn, Credit Line, Bridge, and logs.
-  - Reads onchain state via `viem`/`wagmi`.
-  - Displays protocol metrics (TVL, APY, NAV-derived values, oracle references).
-- Backend & Report Layer (`olympus-be`)
-  - Receive report from Chainlink Runtime Environment.
-  - Set AI Guardian logs for Olympus Frontend.
-- Chainlink CRE Layer (`olympus-cre`)
-  - Workflow-based automation model for modular role execution.
-  - Each workflow roles can be simulated independently.
+  - User interface for My Balances, Earn, DEX Pools, Credit Line, Bridge, and Activity Feed.
+  - Reads on-chain state via `viem` and `wagmi`.
+  - Reads backend state (prices, guardian logs, protocol snapshots) from API endpoints.
+- Backend Intelligence Layer (`olympus-be`)
+  - Runs seven role workers: Reporter, Defender, Strategist, Auditor, Accountant, VaR Calculator, and Bridge Manager.
+  - Ingests market prices from Pyth/Hermes and computes risk-state outputs.
+  - Publishes protocol activity and writes selected outputs on-chain.
 - Smart Contract Layer (`olympus-sc`)
-  - Vaults, router, pool integration, fee hook, and feed cache.
-  - Executes the final source-of-truth state transitions.
+  - Core protocol: OlympusSwap, OlympusLend, OlympusRouter, LVRHook, and per-asset OlympusVault contracts.
+  - Oracle and cache contracts: OlympusWethOracle, OlympusWbtcOracle, OlympusDotOracle, OlympusDataCache.
+  - Cross-chain bridge contracts: OlympusBaseBridge (Base Sepolia) and OlympusPolkadotReceiver (Polkadot Hub TestNet).
+- Agent Layer (`olympus-agent`)
+  - AI copilot runtime that reads Olympus backend context and supports Polkadot-native operational actions.
 
 ### Architecture Diagram
 <div style={{ display: "flex", justifyContent: "center" }}>
@@ -42,61 +43,67 @@ Olympus is designed as a layered system:
   />
 </div>
 
-The system supports multiple isolated markets (WETH, WBTC, LINK), each with its own vault and integrations.
+Olympus currently supports isolated asset markets for `WETH`, `WBTC`, and `DOT`, each with dedicated vault, oracle, and risk handling paths.
 
-## ⚙️Core Technical Concepts
+## Core Technical Concepts
 
 - Delta-Neutral Vault Structure
-  - Users deposit base assets (WETH/WBTC/LINK) into per-asset vaults.
-  - Vault strategy aims to capture yield while controlling directional risk.
-- Oracle-Referenced Pricing
-  - Chainlink feeds are used as the canonical reference price.
-  - Uniswap spot is monitored against oracle price to detect spread/divergence.
+  - Users deposit base assets (`WETH`, `WBTC`, `DOT`) into per-asset vaults.
+  - Vault strategy targets yield while controlling directional risk via leverage management.
+- Spot + Oracle Risk Awareness
+  - Oracle prices are synchronized from Pyth/Hermes into Olympus oracle contracts.
+  - OlympusSwap spot is compared against oracle references to detect divergence.
 - Autonomous Risk Management
-  - Defender adjusts dynamic fee during abnormal volatility/divergence windows.
-  - Strategist monitors leverage/health and triggers rebalance actions.
-- Off-Chain Computation, Onchain Settlement
-  - Complex logic (analytics, AI reasoning, NAV computation) is performed off-chain.
-  - Final state updates are committed onchain via contracts.
+  - Defender adjusts dynamic fees during abnormal volatility/divergence windows.
+  - Strategist and Auditor maintain leverage and safety bounds through rebalance and guard logic.
+- Off-Chain Computation, On-Chain Settlement
+  - Heavy analytics (risk scoring, NAV, VaR, policy decisions) run off-chain.
+  - Final state transitions and key feeds are committed on-chain.
 - Modular Observability
-  - Reporter writes structured logs so users can see why protocol actions occurred.
+  - Reporter and other roles emit structured logs for user-facing transparency.
 
-## 📚Contract Architecture
+## Contract Architecture
 
 Main contracts are organized by responsibility:
 
-- Factory
-  - Registry and deployer for market modules.
-- Vaults (`afWETH`, `afWBTC`, `afLINK`)
-  - User deposits/withdrawals.
-  - Share accounting and total asset tracking.
-- Router / Cross-Chain Receiver
-  - User entry points and cross-chain message handling.
-- Uniswap Pool Integration + LVR Hook
-  - Execution venue and dynamic fee control path.
-- Aave Integration
-  - Debt/collateral source for leverage and health checks.
-- Data Feeds Cache
-  - Onchain cache endpoint for NAV or oracle-aligned reporting values.
+- Factory and Router
+  - Factory and router contracts coordinate market modules and protocol routing.
+- Vaults (`afWETH`, `afWBTC`, `afDOT`)
+  - Handle user deposit and withdrawal flows.
+  - Maintain share accounting and total assets.
+- Execution and Fee Defense
+  - OlympusSwap is the execution venue.
+  - LVRHook manages adaptive fee updates.
+- Credit and Leverage Layer
+  - OlympusLend provides delegated USDC credit path used by vault strategy flows.
+- Oracle and Risk Cache
+  - Per-asset spot oracle contracts store synchronized market references.
+  - OlympusDataCache stores on-chain NAV and VaR feed updates.
+- Hyperbridge / XCM Onboarding
+  - OlympusBaseBridge receives bridge requests on Base Sepolia.
+  - OlympusPolkadotReceiver validates routes and triggers destination vault deposit flow on Polkadot Hub TestNet.
 
-For current deployed addresses, see the **[Smart Contracts](/docs/dev/smart-contracts)** page.
+For deployed addresses, see **[Smart Contracts](/docs/dev/smart-contracts)**.
 
-## 🔢Mathematical Foundation
+## Mathematical Foundation
 
 Core formulas used in protocol logic:
 
 - Share Price
   - `sharePrice = totalAssets / totalSupply`
-  - Used for vault accounting, user position value, and APY derivation.
+  - Used for vault accounting and position valuation.
 - Position Value (USD)
-  - `valueUsd = assetAmount * oraclePriceUsd`
-  - Oracle price is the reference baseline.
-- Delta Spread
-  - `deltaSpreadPct = ((uniswapSpot - oraclePrice) / oraclePrice) * 100`
-  - Used as a signal for fee defense and neutralization workflows.
+  - `valueUsd = assetAmount * referencePriceUsd`
+  - Reference price comes from synchronized oracle state.
+- Divergence Signal
+  - `divergencePct = ((spotPrice - referencePrice) / referencePrice) * 100`
+  - Used by Defender as a fee-defense input.
 - Health Factor (conceptual)
   - `HF = (collateralValue * liquidationThreshold) / debtValue`
-  - Strategist uses threshold bands to decide deleverage or releverage.
+  - Used for risk band checks and guard decisions.
 - NAV Update Principle
   - `NAV = assets - liabilities`
-  - Computed off-chain, then published onchain for low-gas reads.
+  - Computed off-chain, then published on-chain for efficient reads.
+- VaR (one-sided confidence model)
+  - `VaR = quantile(lossDistribution, confidenceLevel)`
+  - Computed from recent market history and written to on-chain cache.

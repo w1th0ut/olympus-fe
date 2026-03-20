@@ -9,66 +9,66 @@ Olympus lets users allocate to vaults that target linearized yield by combining 
 
 > At a glance
 >
-> - Deposit a supported asset (`WETH`, `WBTC`, or `LINK`) and receive `afToken` shares.
-> - Olympus Vault borrows delegated `USDC` from **Aave** using **credit delegation**.
-> - User asset + borrowed USDC are deployed into **Uniswap v4** market pools.
+> - Deposit a supported asset (`WETH`, `WBTC`, or `DOT`) and receive `afToken` shares.
+> - Olympus Vault borrows delegated `USDC` from OlympusLend using credit delegation.
+> - User asset + borrowed USDC are deployed into OlympusSwap market routes.
 > - Rebalancing logic keeps the position close to its target risk profile as price moves.
-> - A protection layer (LVR hook + workflow controls) is used to reduce toxic flow.
+> - A protection layer (LVR hook + backend guardian controls) is used to reduce toxic flow.
 
-In simple terms: your deposit goes into Olympus Vault, the vault borrows extra USDC from Aave (through delegated credit), then both are used in Uniswap v4 to run the strategy.
+In simple terms: your deposit goes into Olympus Vault, the vault borrows extra USDC from OlympusLend, then both legs are used in OlympusSwap strategy routes to run the position.
 
 ---
 
-## ⁉️The Problem: Impermanent Loss
+## The Problem: Impermanent Loss
 
 In a standard constant-product AMM (`x * y = k`), liquidity providers are continuously rebalanced between asset and stablecoin.  
 That creates underperformance versus simply holding when price trends strongly in either direction.
 
 ### Detailed example
 
-- Start position: `1 ETH ($2,000)` + `$2,000` stablecoins.
-- ETH price doubles from `$2,000` to `$4,000`.
-- A classic AMM LP ends around `0.707 ETH + ~$2,828`.
-- New LP value is about `$5,656` (depending on rounding/fee assumptions).
+- Start position: `1 WETH ($2,000)` + `$2,000` stablecoins.
+- WETH price doubles from `$2,000` to `$4,000`.
+- A classic AMM LP ends around `0.707 WETH + ~$2,828`.
+- New LP value is about `$5,656` (depending on rounding and fee assumptions).
 - Just holding would be exactly `$6,000`.
 - Result: about `5.7%` IL versus hold before fees.
 
-Some protocols try to offset this with token emissions. That can help short term, but it is usually a subsidy layer, not a structural IL fix.
+Some protocols try to offset this with temporary incentives. That can help short term, but it is usually a subsidy layer, not a structural IL fix.
 
 ---
 
-## 💡The Solution: Olympus 2x Delta-Neutral Vault
+## The Solution: Olympus 2x Delta-Neutral Vault
 
 Olympus targets a linearized profile by pairing user collateral with borrowed USDC and managing leverage at vault level.
 
-1. **Deposit base asset**
-User deposits into an Olympus vault and receives `afToken` shares.
+1. **Deposit base asset**  
+   User deposits into an Olympus vault and receives `afToken` shares.
 
-2. **Borrow delegated USDC**
-Olympus Vault draws USDC from **Aave** through a **credit delegation** line assigned to the vault.
+2. **Borrow delegated USDC**  
+   Olympus Vault draws USDC from OlympusLend through a credit delegation line assigned to the vault.
 
-3. **Deploy dual-leg liquidity**
-Collateral leg + borrowed USDC leg are deployed into **Uniswap v4** pools via the vault strategy path.
+3. **Deploy dual-leg liquidity**  
+   Collateral leg + borrowed USDC leg are deployed into OlympusSwap pools via the vault strategy path.
 
-4. **Maintain target profile**
-When price moves, the vault rebalances debt/collateral alignment toward its configured leverage target.
+4. **Maintain target profile**  
+   When price moves, the vault rebalances debt/collateral alignment toward its configured leverage target.
 
 The goal is to reduce IL drag and keep a more stable risk-adjusted growth curve than passive LPing.
 
-### Why this is designed to kill IL drag
+### Why this is designed to reduce IL drag
 
 In a normal AMM, LP value tends to scale with `sqrt(p)` as price moves (`p = price ratio`).  
-With Olympus' 2x vault structure (collateral leg + delegated USDC debt leg), the net position is engineered to scale closer to `p` around its target regime, not pure `sqrt(p)`.
+With Olympus 2x vault structure (collateral leg + delegated USDC debt leg), the net position is engineered to scale closer to `p` around its target regime, not pure `sqrt(p)`.
 
-That is the key intuition: reducing `sqrt(p)` drag is how Olympus targets IL at the root strategy level, instead of relying only on token incentives.
+That is the key intuition: reducing `sqrt(p)` drag is how Olympus targets IL at the strategy level, instead of relying only on incentives.
 
 ---
 
-## ⬛Comparing Outcomes Across Price Moves
+## Comparing Outcomes Across Price Moves
 
 The table below is a simplified illustration (ignores trading fees, borrow cost, and execution friction) to isolate IL behavior:
 
-| Asset move | Just hold (1 ETH + $2,000 USDC) | Classic `x*y=k` LP | Olympus (2x leverage) |
+| Asset move | Just hold (1 WETH + $2,000 USDC) | Classic `x*y=k` LP | Olympus (2x leverage) |
 | --- | --- | --- | --- |
 | -50% | $3,000 | ~$2,828 (about -5.7% vs hold) | $3,000 (+ fees) |
 | 0% | $4,000 | $4,000 | $4,000 (+ fees) |
@@ -79,56 +79,82 @@ Practical outcome: users keep fee exposure while reducing directional IL drag ve
 
 ---
 
-## 📊What Happens When Price Changes?
+## What Happens When Price Changes?
 
 Olympus continuously tracks leverage, debt ratio, and health factor (`HF = collateral value / debt value` in simplified terms).  
 When deviation grows, the vault can rebalance toward its target profile.
 
-### 📈Asset price goes up (debt too low)
+### Asset price goes up (debt too low)
 
 1. **Debt ratio drops below target**  
    Collateral value rises, while USDC debt is relatively smaller.
 2. **Rebalance signal appears**  
    Strategy checks show under-leveraged state versus target 2x profile.
 3. **Vault re-levers**  
-   Vault borrows additional delegated USDC from Aave and redeploys into Uniswap v4 strategy legs.
+   Vault borrows additional delegated USDC from OlympusLend and redeploys into OlympusSwap strategy legs.
 4. **Back toward target**  
    Debt/Collateral ratio moves back to the intended range, while HF remains healthy.
 
-### 📉Asset price goes down (debt too high)
+### Asset price goes down (debt too high)
 
 1. **Debt ratio climbs above target**  
    Collateral value falls, but outstanding debt stays.
 2. **Risk control trigger**  
    Health factor buffer shrinks and the position needs de-leveraging.
 3. **Vault de-levers**  
-   Vault reduces exposure, withdraws part of strategy liquidity, and repays a portion of Aave debt.
+   Vault reduces exposure, withdraws part of strategy liquidity, and repays a portion of delegated debt.
 4. **Back toward target**  
    Position returns to safer leverage and HF buffer improves.
 
-### Where Chainlink workflow fits
+---
 
-- Chainlink workflow observes off-chain risk conditions and supports risk-state updates for protocol protection.
-- The same risk-awareness layer helps keep vault operations aligned with target safety ranges (including HF buffer discipline).
-- In high-volatility windows, protection logic can tighten execution conditions while vault rebalancing keeps leverage in range.
+## AI Guardian Role Map
+
+Olympus backend runs seven operational roles:
+
+| Role | Primary focus | Typical output |
+| --- | --- | --- |
+| Reporter | Protocol cycle summary | Activity feed updates |
+| Defender | Volatility/divergence defense | Dynamic fee updates |
+| Strategist | Leverage/HF drift handling | Rebalance planning or execution |
+| Auditor | Safety and guardrails | Pause/guard decisions |
+| Accountant | Vault valuation | NAV updates |
+| VaR Calculator | Tail risk estimation | VaR updates |
+| Bridge Manager | Cross-chain delivery monitoring | Bridge status and auto-deposit logs |
 
 ---
 
-## 🛡️Protection Layer: Why Olympus Is Different
+## Protection Layer: Why Olympus Is Different
 
 - **Restricted direct pool access:** intended flow is through Olympus vaults, not unrestricted direct LP routing.
 - **LVR-aware hook controls:** dynamic fee logic helps defend against toxic/JIT flow.
-- **Workflow-driven operations:** off-chain signals can trigger risk responses for on-chain execution parameters.
+- **Role-driven operations:** off-chain signals can trigger risk responses for on-chain execution parameters.
+
+![Vault Token And Risk Diagram](/images/Vault-Token-Diagram.jpeg)
 
 ---
 
-## ⬜Using Olympus: User Flow
+## Cross-Chain Onboarding (Hyperbridge / XCM)
+
+Olympus supports onboarding from Base Sepolia to Polkadot Hub TestNet:
+
+| Step | Component | Result |
+| --- | --- | --- |
+| 1 | User + OlympusBaseBridge (Base Sepolia) | User submits `USD.h` bridge request |
+| 2 | Hyperbridge relayers | Message and token are relayed cross-chain |
+| 3 | OlympusPolkadotReceiver (Polkadot Hub) | Route is validated and processed |
+| 4 | Olympus vault route | Deposit flow executes and `afToken` is minted |
+
+Testnet relay is asynchronous and may take several minutes before final mint is visible.
+
+---
+
+## Using Olympus: User Flow
 
 ![Olympus User Flow Diagram](/images/User%20Diagram.png)
 
-1. Select an Earn vault (`afWETH`, `afWBTC`, or `afLINK`).
+1. Select an Earn vault (`afWETH`, `afWBTC`, or `afDOT`).
 2. Deposit asset from wallet (or bridge from supported source flow).
 3. Receive `afToken` shares representing vault position.
 4. Vault auto-manages debt + collateral composition and rebalancing.
 5. Withdraw by redeeming `afToken`; underlying position is unwound by vault logic.
-

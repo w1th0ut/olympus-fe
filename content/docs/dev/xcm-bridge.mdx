@@ -1,0 +1,34 @@
+---
+title: XCM Bridge
+description: Simple overview of Olympus cross-chain onboarding from Base Sepolia to Polkadot Hub TestNet.
+---
+
+# XCM Bridge
+
+This page explains the Olympus cross-chain deposit path in a simple way.
+
+Olympus uses a bridge flow based on Hyperbridge messaging:
+- Source chain: Base Sepolia
+- Destination chain: Polkadot Hub TestNet
+- Source contract: `OlympusBaseBridge`
+- Destination contract: `OlympusPolkadotReceiver`
+
+## Bridge Flow (Simple)
+
+1. User sends `USD.h` from Base Sepolia through `OlympusBaseBridge`.
+2. Hyperbridge relayers deliver the message and token payload.
+3. `OlympusPolkadotReceiver` validates route and target vault.
+4. Receiver routes deposit into the selected Olympus vault path.
+5. User receives destination vault shares (`afToken`) on Polkadot Hub.
+
+> Note: testnet delivery is asynchronous and can take several minutes before final state appears in UI.
+
+## Diagram
+
+<div style={{ display: "flex", justifyContent: "center" }}>
+  <img
+    src="/images/diagram-image/XCM-Bridge-Diagram.png"
+    alt="Olympus XCM Bridge Diagram"
+    style={{ width: "100%", maxWidth: "880px", height: "auto" }}
+  />
+</div>
